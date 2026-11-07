@@ -1,6 +1,8 @@
 name: Release
 
-# Push a tag like v0.2.1 that matches .claude-plugin/plugin.json to cut a GitHub release.
+# Push a tag vX.Y.Z after build-core.yml has filled the draft release vX.Y.Z and
+# dist/checksums/vX.Y.Z.txt is committed. The test job re-runs the checks with a read-only token; the
+# publish job verifies the draft's binaries against the committed checksums and publishes the release.
 on:
   push:
     tags: ['v*.*.*']
@@ -11,27 +13,44 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: Tag must match the plugin version
+        with:
+          persist-credentials: false
+      - name: Tag must match the plugin, and its checksums must be committed
         run: |
           v=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' .claude-plugin/plugin.json | head -1)
           [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME does not match plugin.json version v$v" >&2; exit 1; }
+          [ -s "dist/checksums/$GITHUB_REF_NAME.txt" ] || { echo "dist/checksums/$GITHUB_REF_NAME.txt is not committed" >&2; exit 1; }
       - name: ShellCheck
         run: shellcheck -x -S warning bin/super-agents scripts/*.sh tests/run.sh .githooks/pre-push
       - name: Tests
         run: bash tests/run.sh
 
-  # Only this job can write to the repository, and it runs no repository code: it needs no checkout.
+  # Only this job can write to the repository (a draft release is only visible to a token that can write). It runs no
+  # repository code: it reads the committed checksums as data, compares the draft's binaries with them, and publishes.
   publish:
     needs: test
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
-      - name: Create release
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Draft binaries must match the committed checksums
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --generate-notes --verify-tag
+        run: |
+          mkdir assets
+          gh release download "$GITHUB_REF_NAME" --dir assets --pattern 'sa-core-*'
+          (cd assets && sha256sum -c "../dist/checksums/$GITHUB_REF_NAME.txt")
+          [ "$(ls assets | wc -l)" -eq "$(wc -l < "dist/checksums/$GITHUB_REF_NAME.txt")" ] || { echo "asset count differs from the checksum list" >&2; exit 1; }
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$GITHUB_REF_NAME" --jq .body > notes.md
+          gh release edit "$GITHUB_REF_NAME" --draft=false --notes-file notes.md

@@ -1,0 +1,95 @@
+name: Build sa-core
+
+# Run by hand before a release: builds sa-core for every platform from the chosen ref, uploads the
+# binaries and checksums.txt to a draft release, and leaves publishing to release.yml.
+#   gh workflow run build-core.yml --ref <branch> -f version=X.Y.Z
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Plugin version without the v; must match .claude-plugin/plugin.json and core/Cargo.toml"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  RUST_TOOLCHAIN: "1.99.1"
+
+jobs:
+  draft:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Versions must match the input
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          p=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' .claude-plugin/plugin.json | head -1)
+          c=$(sed -n 's/^version = "\(.*\)"/\1/p' core/Cargo.toml | head -1)
+          [ "$p" = "$VERSION" ] && [ "$c" = "$VERSION" ] || { echo "input $VERSION, plugin.json $p, core/Cargo.toml $c" >&2; exit 1; }
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release view "v$VERSION" >/dev/null 2>&1 ||
+            gh release create "v$VERSION" --draft --title "v$VERSION" --notes "sa-core binaries for v$VERSION (draft)" --target "$GITHUB_SHA"
+
+  build:
+    needs: draft
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { os: ubuntu-latest,    target: x86_64-unknown-linux-musl,  ext: "" }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, ext: "" }
+          - { os: macos-latest,     target: aarch64-apple-darwin,       ext: "" }
+          - { os: macos-latest,     target: x86_64-apple-darwin,        ext: "" }
+          - { os: windows-latest,   target: x86_64-pc-windows-msvc,     ext: ".exe" }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Install rustup if the image lacks it
+        run: |
+          command -v rustup >/dev/null && exit 0
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: musl tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y -q musl-tools
+      - name: Toolchain
+        run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --target "${{ matrix.target }}"
+      - name: Build
+        working-directory: core
+        run: cargo "+$RUST_TOOLCHAIN" build --release --locked --target "${{ matrix.target }}"
+      - name: Upload to the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          asset="sa-core-${{ matrix.target }}${{ matrix.ext }}"
+          cp "core/target/${{ matrix.target }}/release/sa-core${{ matrix.ext }}" "$asset"
+          gh release upload "v$VERSION" "$asset" --clobber
+
+  checksums:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: checksums.txt, to commit as dist/checksums/v<version>.txt
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          mkdir assets && cd assets
+          gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" --pattern 'sa-core-*'
+          sha256sum sa-core-* > checksums.txt
+          cat checksums.txt
+          [ "$(wc -l < checksums.txt)" -eq 5 ] || { echo "expected 5 binaries" >&2; exit 1; }
+          gh release upload "v$VERSION" checksums.txt --repo "$GITHUB_REPOSITORY" --clobber

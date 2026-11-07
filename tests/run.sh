@@ -439,6 +439,8 @@ t sa-commit-tickets-route 1 bash -c "cd $T && $SA commit-tickets"; has sa-commit
 ver() { sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$1" | head -1; }   # the first "version" in a manifest
 v1=$(ver "$R/.claude-plugin/plugin.json"); v2=$(ver "$R/.claude-plugin/marketplace.json")
 [ -n "$v1" ] && [ "$v1" = "$v2" ] && ok || bad "manifest versions differ: plugin.json '$v1', marketplace.json '$v2'"
+v3=$(sed -n 's/^version = "\(.*\)"/\1/p' "$R/core/Cargo.toml" | head -1)
+[ "$v3" = "$v1" ] && ok || bad "core/Cargo.toml version '$v3' differs from plugin.json '$v1'"
 for s in $(grep -oE '/scripts/[A-Za-z0-9._-]+' "$R/hooks/hooks.json" | sed 's#^/scripts/##'); do
   [ -x "$X/$s" ] && ok || bad "hooks.json runs scripts/$s, which is missing or not executable"
 done
