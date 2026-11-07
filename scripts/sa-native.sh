@@ -6,12 +6,12 @@
 # never 2: Claude Code reads exit 2 from a hook as "block", and a missing helper must not block anything.
 root="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 case "$(uname -s)-$(uname -m)" in
-  Linux-x86_64)               t=x86_64-unknown-linux-musl  x= ;;
-  Linux-aarch64|Linux-arm64)  t=aarch64-unknown-linux-musl x= ;;
-  Darwin-x86_64)              t=x86_64-apple-darwin        x= ;;
-  Darwin-arm64)               t=aarch64-apple-darwin       x= ;;
+  Linux-x86_64)               t=x86_64-unknown-linux-musl  x='' ;;
+  Linux-aarch64|Linux-arm64)  t=aarch64-unknown-linux-musl x='' ;;
+  Darwin-x86_64)              t=x86_64-apple-darwin        x='' ;;
+  Darwin-arm64)               t=aarch64-apple-darwin       x='' ;;
   MINGW*-x86_64|MSYS*-x86_64) t=x86_64-pc-windows-msvc     x=.exe ;;
-  *)                          t=                           x= ;;
+  *)                          t=''                         x='' ;;
 esac
 build="cargo build --release --locked --manifest-path $root/core/Cargo.toml"
 [ -n "${SUPER_AGENTS_CORE:-}" ] && exec "$SUPER_AGENTS_CORE" "$@"
