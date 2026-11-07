@@ -46,7 +46,7 @@ What degrades outside Claude Code: the hooks that stop an agent from saying "don
 
 **One feature, in this session:** `/super-agents:write-eval <name>` → you approve → `/super-agents:review-loop <name>`.
 
-**Many features, in parallel:** `/super-agents:write-tickets <request or PRD>` → read the tickets → `/super-agents:mark-ready 001 002` → run `superagent` in a terminal and say "start with 001" (or just "start").
+**Many features, in parallel:** `/super-agents:write-tickets <request or PRD>` → read the tickets → `/super-agents:mark-ready 001 002` → run `superagent` in a terminal and say "start with 001" (or just "start"). Workers build from committed files only, so `superagent` first offers to commit the tickets, `review.md`, `CLAUDE.md` and `.gitignore`.
 
 ## Commands
 
@@ -69,7 +69,7 @@ What degrades outside Claude Code: the hooks that stop an agent from saying "don
 | `router` | The only agent you talk to. Opus, high effort, and **no write or shell tools**: it can only read, start agents and message them. Shows you a run plan and asks before it starts any tickets (name tickets to skip the question, or say "keep going" to stop being asked as more unblock), starts the watchdog, dispatches, checks each result against the ticket's evals, queues merges, relays decisions to you. |
 | `worker` | One solo ticket in its own git worktree: builds, has the tester and reviewer check it, writes `results.md` + `evidence/`, commits on its branch. Sonnet. |
 | `teammate` | One member of an agent team on a `team` ticket. Works in the main checkout on files it owns, agreed first in `contract.md`; the last-named teammate integrates and tests. |
-| `merger` | Lands a solo branch, a team's work, or a fix branch on the current branch; lint + build; undoes on failure; marks the ticket done. One at a time. |
+| `merger` | Lands a solo branch, a team's work, or a fix branch on the current branch: merges without committing, runs lint + build, then commits or aborts; refuses a branch that changed the approved `evals.md`; marks the ticket done. One at a time. |
 | `checker` | After a merge, walks the ticket and its neighbouring flows in a real browser on port 3000 as a first-time user. Read-only. Reports only breaks it reproduced twice. |
 | `reproducer` | Reproduces a bug twice in its own worktree; fixes it on its own branch if small and local; otherwise reports. |
 | `watchdog` | Background. Runs a scan every 10 minutes and tells the router about silent, blocked or slow workers, dependency cycles, a down app. Rules live in `.super-agents/watchdog.conf`. |
@@ -96,17 +96,18 @@ Ticket `NNN` runs on port `3100+NNN` with test account `tNNN`; the main checkout
 ## Hooks (Claude Code; always on while the plugin is enabled)
 
 - **SessionStart**: states the "done means proven" agreement; in a git repo without `review.md` suggests `/super-agents:setup-project`; mentions an active loop or a ticket board.
-- **Stop**: while a review-loop is active, blocks "done" until every eval passes in `results.md`, each pass row pointing at a non-empty `evidence/` file, and `evals.md` is unchanged since you approved it. Released when the loop waits on you, when the state file is over 12 hours old, or after 3 blocks.
-- **SubagentStop**: a worker cannot finish until the same holds (or it declared itself blocked, or after 3 blocks).
-- **PreToolUse**: keeps only the first-time-user agent away from the code.
+- **Stop**: while a review-loop is active, blocks "done" until every eval passes in `results.md`, each pass row pointing at a non-empty `evidence/` file, and `evals.md` matches the fingerprint written when you approved it (no fingerprint counts as a failure; re-approve with `mark-ready`). The first session to stop claims the loop; other sessions in the repo are never gated by it. Released when the loop waits on you, when the state file is over 12 hours old, or after 3 blocks.
+- **SubagentStop**: a worker cannot finish until the same holds (or it declared itself blocked, or after 3 blocks; going back to `building` resets the count). A gate that cannot run says so. Teammates on team tickets are not gated: their tickets rely on the integrator's tester run and the router's read of the results.
+- **PreToolUse**: keeps only the first-time-user agent away from the code (Bash denylist, and `file:` URLs in browser calls).
 
 ## Known limits
 
 - **Team tickets use Claude Code's experimental agent teams**, which `superagent` enables for its own session only. They only work in an interactive session, are not resumable, and teammates share the main checkout (hence the file-ownership contract).
 - The router restriction is its `tools` list, so it cannot start servers or run `board.py`; workers, the merger and the watchdog do that.
 - `agent-browser` is not bundled. Install it for parallel browser checks: `npm install -g agent-browser && agent-browser install`. Without it the tester, checker and reproducer fall back to the Chrome tools, which are one shared browser.
-- The done-gates check that evidence files exist and are non-empty, not what they show. In a worker's worktree the `evals.md` fingerprint is checked against the copy in your main checkout, which the worker cannot change; in the single-feature review-loop the builder shares your checkout, so there it only catches accidental edits. The post-merge checker, which re-walks the merged feature in a browser, is the independent check.
-- The first-time-user Bash block is a regex denylist, not a sandbox: it blocks file-reading commands and shell wrappers where a command starts (words inside arguments are fine), but a determined agent can bypass it, for example by splitting a word with quotes.
+- The done-gates check that evidence files exist and are non-empty, not what they show. In a worker's worktree the `evals.md` fingerprint is checked against the copy in your main checkout. Nothing technical stops a worker from writing there (workers have Bash), so the router reads `evals.md` from the main checkout and the merger refuses a branch that changed the approved files. In the single-feature review-loop the builder shares your checkout, so there the fingerprint only catches accidental edits. The post-merge checker, which re-walks the merged feature in a browser, is the independent check.
+- **Parallel mode runs unattended** (`--permission-mode auto`) and the worker, merger, reproducer and teammates have Bash. "Never push", "never touch the main checkout" and "never edit `evals.md`" are prompt rules. On a real codebase run it in a container, a VM or a disposable clone.
+- The first-time-user Bash block is a regex denylist, not a sandbox: it blocks file-reading commands and shell wrappers where a command starts (words inside arguments are fine; a plain filter such as `head` or `grep` after a pipe from `curl` or a launcher is fine too), and `file:` URLs in browser calls. A determined agent can still bypass it, for example by splitting a word with quotes or with `grep -r` after such a pipe.
 - Plugin subagents cannot carry their own hooks, so the worker and first-time-user gates are plugin-level hooks keyed on `agent_type`.
 - Parallel agents and router sessions are expensive. Use tickets for work that is worth it, and `classify-risk` to decide how hard to push.
 

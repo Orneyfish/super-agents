@@ -69,6 +69,20 @@ cp $D/RD.md $T/rd.bak
 printf '\nTODO fill\n' >> $D/RD.md; t eval-todo 1 $X/check-evals.sh $D;                has eval-todo "unfilled placeholder"
 cp $T/rd.bak $D/RD.md; printf '\nUsers can add a `TODO` item.\n' >> $D/RD.md; t eval-todo-backticked 0 $X/check-evals.sh $D
 cp $T/rd.bak $D/RD.md
+# H3: a ticket with no approval fingerprint anywhere cannot pass (a worker could have deleted or never had one)
+# L2: the tester prints PASS, the gate takes it in any case. L5: '## E2E ...' is not an eval, and an id never keeps its colon
+fp() { python3 -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$1/evals.md" > "$1/.evals.sha256"; }
+mkfix() { mkdir -p $1/evidence; echo ok > $1/evidence/E1.txt
+  printf '# t\n\n**Status:** building\n**Risk:** low\n\n## Functional requirements\n- FR-1: a\n\nUI: no\n' > $1/RD.md
+  printf '# E\n\n## Setup\nx\n\n## E1: a\n- covers: FR-1\n- check: c\n- pass when: p\n- fail when: f\n' > $1/evals.md
+  printf '| eval | result | evidence |\n|---|---|---|\n| E1 | PASS | evidence/E1.txt: ok |\n' > $1/results.md; }
+F=$T/f1; mkfix $F
+t eval-no-fingerprint 1 $X/check-evals.sh $F --passed;             has eval-no-fingerprint "no approval fingerprint"
+fp $F; t eval-pass-uppercase 0 $X/check-evals.sh $F --passed
+printf '\n## E2E setup\nStart the browser first.\n' >> $F/evals.md; fp $F
+t eval-e2e-heading 0 $X/check-evals.sh $F;                         t eval-e2e-heading-passed 0 $X/check-evals.sh $F --passed
+sedi 's/^- check: c$//' $F/evals.md
+t eval-missing-line 1 $X/check-evals.sh $F;                        has eval-missing-line 'FAIL: E1 is missing its "check" line'
 
 # ---- eval-gate.sh (Stop hook of the review-loop)
 mkdir -p .super-agents; st=.super-agents/state.md; in="{\"cwd\":\"$T/repo\"}"
@@ -82,6 +96,11 @@ state $D false; gate; silent gate-inactive
 state $D true false 3; gate; has gate-cap "released after 3 blocks"
 state ../../etc; gate; silent gate-path-traversal
 state; age $st 13; gate; silent gate-stale
+# M5: the first session to stop claims the loop; a second session in the same repo is never gated by it
+gs() { LAST=$(echo "{\"cwd\":\"$T/repo\",\"session_id\":\"$1\"}" | $X/eval-gate.sh); }
+state; gs A; has gate-session-claim '"decision": "block"'; grep -q '^session: A' $st && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL gate did not record the owning session"; }
+gs B; silent gate-other-session
+gs A; has gate-owner-still-gated '"decision": "block"'
 sedi 's/| E2 | fail |/| E2 | pass |/' $D/results.md; rm -rf .super-agents
 
 # ---- job-status.sh + worker-gate.sh (SubagentStop)
@@ -94,8 +113,17 @@ wg super-agents:builder; silent wgate-other-agent
 sedi 's/| E2 | pass |/| E2 | fail |/' $T/repo/$D/results.md
 wg super-agents:worker; has wgate-blocks '"decision": "block"'
 $X/job-status.sh blocked why; wg worker; silent wgate-blocked-phase
-$X/job-status.sh building; echo 3 > .job/gate_blocks; wg worker; silent wgate-cap
-sedi 's/| E2 | fail |/| E2 | pass |/' $T/repo/$D/results.md; rm .job/gate_blocks; wg worker; silent wgate-passing
+$X/job-status.sh building; echo 3 > .job/gate_blocks; wg worker; has wgate-cap "released after 3 blocks"
+# M2: going back to building (a fix round) starts a fresh block count
+echo 2 > .job/gate_blocks; $X/job-status.sh building; [ ! -f .job/gate_blocks ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL building did not reset gate_blocks"; }
+sedi 's/| E2 | fail |/| E2 | pass |/' $T/repo/$D/results.md; wg worker; silent wgate-passing
+# M2: init stores an absolute ticket dir; a relative one in status.json is resolved against the worker's cwd, not the hook's
+W3=$T/wt3; mkdir -p $W3/$D $W3/.job; cp -R $T/repo/$D/. $W3/$D/; sedi 's/| E2 | pass |/| E2 | fail |/' $W3/$D/results.md
+(cd $W3 && $X/job-status.sh init 001 $D building); [[ $(jq -r .dir $W3/.job/status.json) == /* ]] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL job-status init kept a relative dir"; }
+jq '.dir="specs/tickets/001-found"' $W3/.job/status.json > $W3/.job/s.tmp && mv $W3/.job/s.tmp $W3/.job/status.json
+cd $T/repo || exit; LAST=$(echo "{\"cwd\":\"$W3\",\"agent_type\":\"worker\"}" | $X/worker-gate.sh); has wgate-relative-dir '"decision": "block"'
+# M2: a worker whose gate cannot run is told so
+LAST=$(echo "{\"cwd\":\"$T/np\",\"agent_type\":\"worker\"}" | $X/worker-gate.sh); has wgate-skip-notice "worker gate skipped"
 cd $T/repo || exit
 
 # ---- board.py scan (watchdog)
@@ -114,6 +142,23 @@ jq -n --arg u "$(iso 40)" --arg s "$(iso 41)" '{ticket:"001",phase:"building",st
 mkdir -p .super-agents; printf 'ignore=001\n' > .super-agents/watchdog.conf; t scan-ignore 0 $X/board.py scan; silent scan-ignore
 jq -n --arg u "$(iso 1)" --arg s "$(iso 2)" '{ticket:"001",phase:"blocked",started:$s,updated:$u,note:"db down",agent:"a"}' > .job/status-001-a.json; : > .super-agents/watchdog.conf
 t scan-blocked 0 $X/board.py scan;                                has scan-blocked "blocked: db down"
+# L6: one unreadable status file or one bad number in watchdog.conf must not hide the other problems
+$X/board.py set 003 building >/dev/null
+jq -n '{ticket:"001",phase:"building",agent:"a"}' > .job/status-001-a.json
+t scan-malformed 0 $X/board.py scan;                              has scan-malformed "001 status file unreadable"; has scan-malformed-others "003 is 'building'"
+printf '{not json' > .job/status-001-a.json
+t scan-badjson 0 $X/board.py scan;                                has scan-badjson "status-001-a.json unreadable"
+jq -n --arg u "$(iso 40)" --arg s "$(iso 41)" '{ticket:"001",phase:"building",started:$s,updated:$u,note:"",agent:"a"}' > .job/status-001-a.json; printf 'stale_min=abc\n' > .super-agents/watchdog.conf
+t scan-bad-conf 0 $X/board.py scan;                               has scan-bad-conf "silent for"
+$X/board.py set 003 ready >/dev/null
+
+# L1: a bad interval_min falls back to 10 minutes (with a warning) instead of busy-looping or killing the watchdog
+mkdir -p $T/fs; printf '#!/bin/sh\necho "SLEEP $1"\nkill $PPID\n' > $T/fs/sleep; chmod +x $T/fs/sleep
+wl() { printf 'interval_min=%s\n' "$1" > .super-agents/watchdog.conf; LAST=$(PATH="$T/fs:$PATH" $X/watchdog-loop.sh 2>&1); }
+wl 5;      has watchdog-interval "SLEEP 300"
+wl 0;      has watchdog-zero "SLEEP 600"
+wl five;   has watchdog-word "SLEEP 600"
+wl 0.5;    has watchdog-fraction "SLEEP 600"; has watchdog-fraction-warns "bad interval_min"
 rm -rf .job .super-agents
 
 # ---- init-project.sh
@@ -126,16 +171,29 @@ t init-idempotent 0 $X/init-project.sh $T/p1;                      hasnt init-id
 mkdir -p $T/p4; git -C $T/p4 init -q -b main; printf '# P\n<!-- SUPER_AGENTS_START -->\nold\nrules the user wrote\n' > $T/p4/CLAUDE.md; cp $T/p4/CLAUDE.md $T/p4.bak
 t init-no-end 0 $X/init-project.sh $T/p4;                          has init-no-end "no SUPER_AGENTS_END"
 cmp -s $T/p4/CLAUDE.md $T/p4.bak && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL init rewrote a CLAUDE.md that has no END marker"; }
+# M6: only marker LINES count; prose that names the markers is the user's text and must survive
+mkdir -p $T/p5; git -C $T/p5 init -q -b main
+printf '# Project\nWe use the SUPER_AGENTS_START marker from the plugin.\nrule A: never touch billing/\nrule B: run make lint\nIt ends at SUPER_AGENTS_END.\nrule C\n' > $T/p5/CLAUDE.md
+t init-prose-markers 0 $X/init-project.sh $T/p5;                   has init-prose-markers "added  super-agents block"
+grep -q '^rule A' $T/p5/CLAUDE.md && grep -q '^rule B' $T/p5/CLAUDE.md && grep -q '^rule C' $T/p5/CLAUDE.md && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL init deleted user lines that only mention the markers"; }
+t init-prose-idempotent 0 $X/init-project.sh $T/p5;                hasnt init-prose-idempotent "updated"; hasnt init-prose-idempotent "added  super-agents"
 
 # ---- superagent.sh with a fake claude
 mkdir -p $T/bin; printf '#!/bin/sh\necho "ARGS: $*"; echo "TEAMS=$CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"\n' > $T/bin/claude; chmod +x $T/bin/claude
-cd $T/repo || exit; git switch -q main
+cd $T/repo || exit; git switch -q main; git add specs && git commit -qm "tickets"
 t launch-yes 0 bash -c "echo y | PATH=$T/bin:\$PATH $X/superagent.sh --foo"; has launch-args "--agent super-agents:router --name router --permission-mode auto --foo"; has launch-teams "TEAMS=1"
 [ "$(git branch --show-current)" != main ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL launch did not branch"; }
+[[ $(git branch --show-current) =~ ^integration/[0-9]{8}-[0-9]{6}$ ]] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL integration branch name has no seconds: $(git branch --show-current)"; }
 git switch -q main; t launch-no 1 bash -c "echo n | PATH=$T/bin:\$PATH $X/superagent.sh"; has launch-no "refusing"
 t launch-nongit 1 bash -c "cd $T && PATH=$T/bin:\$PATH $X/superagent.sh"
 git switch -q -c feat/x; t launch-mode-override 0 env PATH="$T/bin:$PATH" $X/superagent.sh --permission-mode default
 has launch-mode-override "--permission-mode default"; hasnt launch-mode-override "--permission-mode auto"; git switch -q main
+# M3: workers get worktrees of committed files, so approved-but-uncommitted tickets are committed first (or the launch stops)
+git switch -q -c feat/y; echo more > specs/tickets/003-profile/extra.md
+t launch-uncommitted-no 1 bash -c "echo n | PATH=$T/bin:\$PATH $X/superagent.sh"; has launch-uncommitted-no "uncommitted"
+t launch-uncommitted-yes 0 bash -c "echo y | PATH=$T/bin:\$PATH $X/superagent.sh"; has launch-uncommitted-yes "ARGS:"
+[ -z "$(git status --porcelain -- specs/tickets)" ] && git cat-file -e HEAD:specs/tickets/003-profile/extra.md && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL launch did not commit the tickets"; }
+git switch -q main; git branch -q -D feat/y
 
 # ---- hooks
 ftu() { LAST=$(jq -nc --arg a "$1" --arg c "$2" --arg d "$T" '{cwd:$d,agent_type:$a,tool_name:"Bash",tool_input:{command:$c}}' | $X/block-code-reads.sh); }
@@ -150,7 +208,24 @@ done
 for c in 'echo hi | cat f' 'cd /tmp && cat f' 'FOO=1 cat f' '/usr/bin/cat f' 'xargs cat < list' 'env cat f' 'time cat f' 'echo $(cat f)' 'if true; then cat f; fi' 'bash -c "cat f"' 'curl file:///etc/passwd'; do
   ftu super-agents:first-time-user "$c"; has "hook-ftu-denied: $c" '"permissionDecision": "deny"'
 done
+# L7: reading verbs that were missing from the denylist
+for c in 'sort */*' 'wc -c */*.py' 'jq . package.json' 'sqlite3 data.db .dump' 'base64 config/settings.py' 'paste -s main.py'; do
+  ftu super-agents:first-time-user "$c"; has "hook-ftu-denied: $c" '"permissionDecision": "deny"'
+done
+# L8: filtering the app's own output after a pipe is ordinary use; the deny reason names what matched
+for c in 'curl -s localhost:3000/health | grep ok' 'curl -s localhost:3000/ | head -5' './launcher.sh list | sort | wc -l'; do
+  ftu super-agents:first-time-user "$c"; silent "hook-ftu-allowed: $c"
+done
+ftu super-agents:first-time-user "echo hi | cat f"; has hook-ftu-reason-names-match "'cat'"
+# L7: browser tools are checked too: the app's URLs are fine, file: URLs are not
+ftb() { LAST=$(jq -nc --arg d "$T" --argjson i "$1" '{cwd:$d,agent_type:"super-agents:first-time-user",tool_name:"mcp__claude-in-chrome__navigate",tool_input:$i}' | $X/block-code-reads.sh); }
+ftb '{"url":"http://localhost:3000/"}'; silent hook-ftu-browser-allowed
+ftb '{"url":"file:///home/me/project/src/app.py"}'; has hook-ftu-browser-file-denied '"permissionDecision": "deny"'
+jq -e '.hooks.PreToolUse[0].matcher | test("mcp__claude-in-chrome__")' "$R/hooks/hooks.json" >/dev/null && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL hooks.json matcher does not cover the browser tools"; }
 LAST=$(echo "{\"cwd\":\"$T/np\"}" | $X/session-start.sh); has session-agreement "super-agents plugin is active"
+# L4: the active-loop note lists dir and round
+mkdir -p $T/p6/.super-agents; git -C $T/p6 init -q -b main; touch $T/p6/review.md; printf -- '---\ndir: specs/x\nactive: true\nround: 2\n---\n' > $T/p6/.super-agents/state.md
+LAST=$(echo "{\"cwd\":\"$T/p6\"}" | $X/session-start.sh); has session-active-loop "dir specs/x round 2"
 LAST=$(echo "{\"cwd\":\"$T/repo\"}" | $X/session-start.sh); has session-nudge "/super-agents:setup-project"
 t session-no-jq 0 env PATH="$T/nopath" "$BASH" $X/session-start.sh;  has session-no-jq "jq is not installed"   # hooks need jq; say so instead of silently doing nothing
 
@@ -168,6 +243,30 @@ cd $T/repo || exit; $X/board.py set 001 ready >/dev/null; $X/board.py set 002 re
 t sa-board 0 $SA board check;                                       has sa-board "OK: board"
 t sa-check-evals 0 $SA check-evals specs/tickets/003-profile --ready
 t sa-link-skills 0 $SA link-skills $T/skills-out;                   [ "$(ls $T/skills-out | wc -l)" = "$(ls $R/skills | wc -l)" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL link-skills count"; }
+# L10: a skill folder or link of the same name that is not ours is skipped with a warning, never replaced or nested into
+mkdir -p $T/skills2/fix-bug $T/skills2/elsewhere; ln -s $T/skills2/elsewhere $T/skills2/write-eval
+t sa-link-skills-collision 0 $SA link-skills $T/skills2;            has sa-link-skills-collision "skip"
+[ -d $T/skills2/fix-bug ] && [ ! -L $T/skills2/fix-bug ] && [ ! -e $T/skills2/fix-bug/fix-bug ] && [ "$(readlink $T/skills2/write-eval)" = "$T/skills2/elsewhere" ] && [ -L $T/skills2/classify-risk ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL link-skills clobbered or nested into an existing skill"; }
+t sa-link-skills-again 0 $SA link-skills $T/skills-out;             hasnt sa-link-skills-again "skip"
+
+# L12: inside a submodule the main checkout is the submodule itself, not <superproject>/.git/modules
+git init -q -b main $T/sub && git -C $T/sub -c user.email=t@t -c user.name=t commit -q --allow-empty -m s
+git init -q -b main $T/sup && (cd $T/sup && git -c protocol.file.allow=always submodule add -q ../sub sub)
+mkdir -p $T/sup/sub/specs/tickets; printf '# Board\n| # | Title | Status | Mode | Runs |\n|---|---|---|---|---|\n' > $T/sup/sub/specs/tickets/BOARD.md
+t board-in-submodule 0 bash -c "cd $T/sup/sub && $X/board.py check";  has board-in-submodule "OK: board"
+mkfix $T/sup/sub/f; fp $T/sup/sub/f
+(cd $T/sup/sub && git add -A f >/dev/null && git -c user.email=t@t -c user.name=t commit -qm f && git worktree add -q $T/subwt -b w)
+rm -f $T/subwt/f/.evals.sha256; sedi 's/- fail when: f/- fail when: loosened/' $T/subwt/f/evals.md
+t eval-in-submodule-tampered 1 $X/check-evals.sh $T/subwt/f --passed;  has eval-in-submodule-tampered "changed after the user approved"
+
+# H1: the merger's sequence leaves nothing to revert, so merging the fixed branch again keeps the ticket's work
+# (the old 'merge, then git revert -m 1 HEAD' sequence lost it: the re-merge saw the ticket's commits as already merged)
+h=$T/h1; git init -q -b main $h; (cd $h && git config user.email t@t && git config user.name t && echo a > f && git add . && git commit -qm base \
+  && git switch -q -c integration && git switch -q -c ticket main && echo work > work.txt && git add . && git commit -qm work \
+  && git switch -q integration && git merge -q --no-ff --no-commit ticket >/dev/null 2>&1 && git merge --abort \
+  && git switch -q ticket && echo fix > fix.txt && git add . && git commit -qm fix \
+  && git switch -q integration && git merge -q --no-ff ticket -m remerge)
+[ -f $h/work.txt ] && [ -f $h/fix.txt ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL re-merge after an aborted merge lost the ticket's work"; }
 
 # ---- portable skill lint (Agent Skills format): name == folder, sane name/description, no Claude-only variable in skills
 for d in "$R"/skills/*/; do n=$(basename "$d"); f="$d/SKILL.md"
@@ -177,6 +276,11 @@ done
 
 # ---- repo consistency (static): things that break the plugin silently if they drift
 ok() { pass=$((pass+1)); }; bad() { fail=$((fail+1)); echo "FAIL $*"; }
+# M1: the plugin's bin/ is on the agents' PATH, scripts/ is not: prompts must say 'super-agents job-status' / 'super-agents board', never the bare script
+for f in "$R"/agents/*.md "$R"/skills/*/SKILL.md; do
+  grep -qE 'job-status\.sh|board\.py' "$f" && bad "$f names job-status.sh or board.py directly; use 'super-agents job-status' / 'super-agents board'" || ok
+done
+python3 -B -c 'import ast,sys;ast.parse(open(sys.argv[1]).read())' "$X/board.py" && ok || bad "scripts/board.py does not parse"
 v1=$(jq -r .version "$R/.claude-plugin/plugin.json"); v2=$(jq -r '.plugins[0].version' "$R/.claude-plugin/marketplace.json")
 [ -n "$v1" ] && [ "$v1" = "$v2" ] && ok || bad "manifest versions differ: plugin.json '$v1', marketplace.json '$v2'"
 for s in $(jq -r '.. | .command? // empty' "$R/hooks/hooks.json" | sed -E 's#.*/scripts/([A-Za-z0-9._-]+).*#\1#'); do

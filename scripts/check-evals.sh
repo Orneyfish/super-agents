@@ -2,9 +2,9 @@
 # Usage: check-evals.sh <feature-dir> [--ready] [--passed]       e.g. specs/checkout or specs/tickets/003-login
 #   (no flag)  RD.md + evals.md are well formed: every requirement is covered, every eval complete, no TODO left
 #   --ready    also **Status:** must be ready (the user approved the evals)
-#   --passed   also every eval has a pass row in results.md pointing at a non-empty evidence/ file, and evals.md is unchanged since approval
+#   --passed   also every eval has a pass row in results.md pointing at a non-empty evidence/ file, and evals.md matches the fingerprint written at approval (no fingerprint = fail)
 # Exit 0 = ok. Exit 1 = every problem printed as a FAIL line.
-d="${1:?feature dir}"; shift; rd="$d/RD.md"; ev="$d/evals.md"; rs="$d/results.md"; bad=0; ready=0; passed=0
+here="$(cd "$(dirname "$0")" && pwd)"; d="${1:?feature dir}"; shift; rd="$d/RD.md"; ev="$d/evals.md"; rs="$d/results.md"; bad=0; ready=0; passed=0
 for a; do case $a in --ready) ready=1;; --passed) passed=1;; esac; done
 fail() { echo "FAIL: $*"; bad=1; }
 [ -f "$rd" ] || fail "missing $rd"; [ -f "$ev" ] || fail "missing $ev"
@@ -30,7 +30,7 @@ awk '
   function flush(  i, F) { if (id == "") return
     split("covers check pass_when fail_when", F, " ")
     for (i in F) if (!(F[i] in s)) { print "FAIL: " id " is missing its \"" F[i] "\" line"; bad = 1 } }
-  /^## E-?[0-9]+/ { flush(); id = $2; delete s; n++; next }
+  /^## E-?[0-9]+([:[:space:]]|$)/ { flush(); match($0, /E-?[0-9]+/); id = substr($0, RSTART, RLENGTH); delete s; n++; next }
   /^- covers:/    { s["covers"] = 1 }
   /^- check:/     { s["check"] = 1 }
   /^- pass when:/ { s["pass_when"] = 1 }
@@ -39,18 +39,21 @@ awk '
 ' "$ev" || bad=1
 
 if [ "$passed" = 1 ]; then
-  fp="$d/.evals.sha256"   # written by 'board.py set ... ready'; tickets approved before it existed skip this check
+  fp="$d/.evals.sha256"   # written by 'board.py set ... ready'
   # a worker runs in a git worktree and could rewrite its own copy, so prefer the user's copy in the main checkout
-  if gc=$(git -C "$d" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) && pre=$(git -C "$d" rev-parse --show-prefix 2>/dev/null); then
-    [ -f "$(dirname "$gc")/${pre}.evals.sha256" ] && fp="$(dirname "$gc")/${pre}.evals.sha256"
+  main=$(cd "$d" && "$here/board.py" root 2>/dev/null)
+  if [ -n "$main" ] && pre=$(git -C "$d" rev-parse --show-prefix 2>/dev/null); then
+    [ -f "$main/${pre}.evals.sha256" ] && fp="$main/${pre}.evals.sha256"
   fi
   if [ -f "$fp" ]; then
     got=$(python3 -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$ev")
     [ "$got" = "$(tr -d ' \n' < "$fp")" ] || fail "evals.md changed after the user approved it; restore it (git checkout) or ask the user to re-approve"
+  else   # no fingerprint means nothing proves these are the approved evals; tickets approved before fingerprints existed need one re-approval
+    fail "no approval fingerprint (.evals.sha256) for $d; ask the user to approve it again with mark-ready"
   fi
-  for id in $(grep -oE '^## E-?[0-9]+' "$ev" | sed 's/## //'); do
+  for id in $(grep -oE '^## E-?[0-9]+([:[:space:]]|$)' "$ev" | grep -oE 'E-?[0-9]+'); do
     row=$(grep -E "^\| *$id *\|" "$rs" 2>/dev/null | head -1)
-    res=$(awk -F'|' '{gsub(/ /,"",$3); print $3}' <<<"$row"); evc=$(awk -F'|' '{gsub(/^ +| +$/,"",$4); print $4}' <<<"$row")
+    res=$(awk -F'|' '{gsub(/ /,"",$3); print tolower($3)}' <<<"$row"); evc=$(awk -F'|' '{gsub(/^ +| +$/,"",$4); print $4}' <<<"$row")
     [ "$res" = pass ] || { fail "$id is not passing (results.md says '${res:-no row}')"; continue; }
     ef=${evc%%[ :]*}
     [[ $ef == evidence/* && $ef != *..* ]] || { fail "$id passes without an evidence/ file (results.md says '${evc:-nothing}')"; continue; }

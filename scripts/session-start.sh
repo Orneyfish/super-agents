@@ -10,7 +10,7 @@ if top=$(git rev-parse --show-toplevel 2>/dev/null); then
   if [ ! -f "$top/review.md" ]; then
     ctx+=" This git project has no review.md, so it is not set up for super-agents; /super-agents:setup-project sets it up in one step (worth one mention if the user starts feature work)."
   elif [ -f "$st" ] && grep -q '^active: true' "$st"; then
-    ctx+=" A review-loop is active here ($(sed -n 's/^dir: /dir /p;s/^round: /round /p' "$st" | paste -sd' ')); .super-agents/state.md holds its state."
+    ctx+=" A review-loop is active here ($(sed -n 's/^dir: /dir /p;s/^round: /round /p' "$st" | paste -sd' ' -)); .super-agents/state.md holds its state."
   fi
   [ -f "$top/specs/tickets/BOARD.md" ] && ctx+=" A ticket board exists at specs/tickets/BOARD.md; ready tickets are built in parallel by the router the user starts with 'superagent', not in an ordinary session."
 fi

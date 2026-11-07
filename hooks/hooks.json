@@ -11,7 +11,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Read|Grep|Glob|Edit|Write|NotebookEdit|Bash",
+        "matcher": "Read|Grep|Glob|Edit|Write|NotebookEdit|Bash|mcp__claude-in-chrome__.*",
         "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/block-code-reads.sh" } ]
       }
     ]
