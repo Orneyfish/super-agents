@@ -8,7 +8,8 @@ BOARD="$R/bin/super-agents board"   # the board command under test
 HOOKIO="$X/sa-native.sh hookio"     # the hook scripts' JSON helper under test
 # the native helper (core/) must be built for the board tests; cargo is a no-op when it is up to date
 if command -v cargo >/dev/null; then (cd "$R/core" && cargo build -q --release --locked) || exit 1; fi
-pass=0; fail=0; LAST=""
+pass=0; fail=0; skipped=0; skipwhy=""; LAST=""
+skip() { skipped=$((skipped+1)); case ",$skipwhy," in *",$1,"*) ;; *) skipwhy="${skipwhy:+$skipwhy, }$1";; esac; }   # skip WHY: a test that cannot run here, counted in the summary line
 # the plugin must not need jq or python3: any script that calls one fails loudly against these shims
 mkdir -p "$T/nojq"; for c in jq python3; do printf '#!/bin/sh\necho "%s was called, but the plugin must work without it" >&2\nexit 97\n' $c > "$T/nojq/$c"; chmod +x "$T/nojq/$c"; done; PATH="$T/nojq:$PATH"
 jget() { $HOOKIO get "$1"; }                                   # value of a path in the JSON on stdin
@@ -192,11 +193,14 @@ echo 2 > .job/gate_blocks; $X/job-status.sh building; [ ! -f .job/gate_blocks ] 
 sedi 's/| E2 | fail |/| E2 | pass |/' $T/repo/$D/results.md; wg super-agents:worker; silent wgate-passing
 # M2: init stores an absolute ticket dir; a relative one in status.json is resolved against the worker's cwd, not the hook's
 W3=$T/wt3; mkdir -p $W3/$D $W3/.job; cp -R $T/repo/$D/. $W3/$D/; sedi 's/| E2 | pass |/| E2 | fail |/' $W3/$D/results.md
-(cd $W3 && $X/job-status.sh init 001 $D building); [[ $(jget dir < $W3/.job/status.json) == /* ]] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL job-status init kept a relative dir"; }
+(cd $W3 && $X/job-status.sh init 001 $D building); [[ $(jget dir < $W3/.job/status.json) =~ ^(/|[A-Za-z]:/) ]] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL job-status init kept a relative dir"; }
 sedi 's#"dir": "[^"]*"#"dir": "specs/tickets/001-found"#' $W3/.job/status.json
 cd $T/repo || exit; LAST=$(echo "{\"cwd\":\"$W3\",\"agent_type\":\"super-agents:worker\"}" | $X/worker-gate.sh); has wgate-relative-dir '"decision": "block"'
 # M2: a worker whose gate cannot run is told so
 LAST=$(echo "{\"cwd\":\"$T/np\",\"agent_type\":\"super-agents:worker\"}" | $X/worker-gate.sh); has wgate-skip-notice "worker gate skipped"
+# Windows: a native sa-core.exe stores a ticket dir as C:/... (MSYS rewrites /tmp/x for it); that is absolute, not relative to the worker's cwd
+W5=$T/wt5; mkdir -p $W5/.job; printf '{"ticket":"001","dir":"C:/nope/specs/tickets/001-x","phase":"building"}' > $W5/.job/status.json
+LAST=$(echo "{\"cwd\":\"$W5\",\"agent_type\":\"super-agents:worker\"}" | $X/worker-gate.sh); has wgate-drive-letter-dir "ticket dir C:/nope/specs/tickets/001-x does not exist"
 cd $T/repo || exit
 
 # ---- board.py scan (watchdog)
@@ -386,19 +390,24 @@ mkdir -p $T/p2 $T/p3; git -C $T/p2 init -q -b main; git -C $T/p3 init -q -b main
 t setup-agents-md 0 $X/init-project.sh $T/p2 $T/p3;                  [ ! -f $T/p2/AGENTS.md ] && grep -q SUPER_AGENTS_START $T/p3/AGENTS.md && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL AGENTS.md handling"; }
 
 # ---- bin/super-agents dispatcher (the harness-neutral entry point), also through a symlink
-B="$R/bin/super-agents"; ln -s "$B" $T/bin/super-agents; SA=$T/bin/super-agents
+ln -s "$R/README.md" "$T/.symtest" 2>/dev/null; [ -L "$T/.symtest" ] && SYMLINKS=1 || SYMLINKS=0; rm -f "$T/.symtest"
+B="$R/bin/super-agents"; SA=$T/bin/super-agents
+if [ "$SYMLINKS" = 1 ]; then ln -s "$B" $SA; else printf '#!/bin/bash\nexec "%s" "$@"\n' "$B" > $SA; chmod +x $SA; fi   # no symlinks (Windows): a wrapper still tests the dispatcher
 t sa-usage 2 $SA;                                                   has sa-usage "usage: super-agents"
 t sa-template 0 $SA template RD.md;                                 has sa-template "**Status:** draft"
 t sa-template-traversal 2 $SA template ../README.md
 cd $T/repo || exit; $BOARD set 001 ready >/dev/null; $BOARD set 002 ready >/dev/null; $BOARD set 003 ready >/dev/null
 t sa-board 0 $SA board check;                                       has sa-board "OK: board"
 t sa-check-evals 0 $SA check-evals specs/tickets/003-profile --ready
+if [ "$SYMLINKS" = 1 ]; then   # link-skills makes symlinks
 t sa-link-skills 0 $SA link-skills $T/skills-out;                   [ "$(ls $T/skills-out | wc -l)" = "$(ls $R/skills | wc -l)" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL link-skills count"; }
 # L10: a skill folder or link of the same name that is not ours is skipped with a warning, never replaced or nested into
 mkdir -p $T/skills2/fix-bug $T/skills2/elsewhere; ln -s $T/skills2/elsewhere $T/skills2/write-eval
 t sa-link-skills-collision 0 $SA link-skills $T/skills2;            has sa-link-skills-collision "skip"
 [ -d $T/skills2/fix-bug ] && [ ! -L $T/skills2/fix-bug ] && [ ! -e $T/skills2/fix-bug/fix-bug ] && [ "$(readlink $T/skills2/write-eval)" = "$T/skills2/elsewhere" ] && [ -L $T/skills2/classify-risk ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL link-skills clobbered or nested into an existing skill"; }
 t sa-link-skills-again 0 $SA link-skills $T/skills-out;             hasnt sa-link-skills-again "skip"
+else skip "no symlinks"
+fi
 
 # L12: inside a submodule the main checkout is the submodule itself, not <superproject>/.git/modules
 git init -q -b main $T/sub && git -C $T/sub -c user.email=t@t -c user.name=t commit -q --allow-empty -m s
@@ -459,7 +468,8 @@ t native-override 0 env SUPER_AGENTS_CORE=/bin/echo "$X/sa-native.sh" hello;    
 t sa-install-core 0 $SA install-core;                                             has sa-install-core "sa-core is installed"
 F=$T/fake; mkdir -p $F/scripts $F/.claude-plugin $F/dist/checksums $T/srv
 cp "$X/sa-native.sh" $F/scripts/; printf '{\n  "version": "9.9.9"\n}\n' > $F/.claude-plugin/plugin.json
-fake() { XDG_CACHE_HOME=$T/cache SUPER_AGENTS_CORE_URL=file://$T/srv $F/scripts/sa-native.sh "$@"; }
+up() { command -v cygpath >/dev/null 2>&1 && cygpath -m "$1" || echo "$1"; }   # a file:// URL for the native curl.exe on Windows needs C:/...
+fake() { XDG_CACHE_HOME=$T/cache SUPER_AGENTS_CORE_URL=file://$(up "$T/srv") $F/scripts/sa-native.sh "$@"; }
 t native-no-checksum 3 fake --version;                                            has native-no-checksum "no checksum for sa-core-"
 asset=$(sed -n 's/.*no checksum for \([^ ]*\) in.*/\1/p' <<<"$LAST")
 printf '#!/bin/sh\necho "fake core $*"\n' > $T/srv/$asset
@@ -478,7 +488,7 @@ cp "$X"/*.sh $F/scripts/; mkdir -p $T/empty .super-agents; rm -rf $T/cache; stat
 gate_in=("eval-gate" "{\"cwd\":\"$T/repo\",\"session_id\":\"S\"}" "worker-gate" "{\"cwd\":\"$W\",\"agent_type\":\"super-agents:worker\"}"
   "block-code-reads" "{\"cwd\":\"$T\",\"agent_type\":\"super-agents:first-time-user\",\"tool_name\":\"Read\",\"tool_input\":{}}" "session-start" "{\"cwd\":\"$T/repo\"}")
 for i in 0 2 4 6; do h=${gate_in[$i]}; j=${gate_in[$((i+1))]}
-  LAST=$(XDG_CACHE_HOME=$T/cache SUPER_AGENTS_CORE_URL="file://$T/empty" "$F/scripts/$h.sh" <<<"$j" 2>&1); rc=$?
+  LAST=$(XDG_CACHE_HOME=$T/cache SUPER_AGENTS_CORE_URL="file://$(up "$T/empty")" "$F/scripts/$h.sh" <<<"$j" 2>&1); rc=$?
   [ $rc = 0 ] && ok || bad "$h exited $rc without sa-core"; has "$h-no-core" "sa-core"
   hasnt "$h-no-core" '"decision": "block"'; hasnt "$h-no-core" '"permissionDecision": "deny"'
 done
@@ -496,4 +506,4 @@ for c in "$R"/evals/*/; do n=$(basename "$c"); [ "$n" = results ] && continue   
   [ -f "$c/prompt.md" ] && [ -n "$(ls "$c"/graders/*.md 2>/dev/null)" ] && ok || bad "eval case $n needs prompt.md and at least one graders/*.md"
 done
 
-echo "$pass passed, $fail failed"; [ "$fail" = 0 ]
+echo "$pass passed, $fail failed$([ "$skipped" -gt 0 ] && echo ", $skipped skipped ($skipwhy)")"; [ "$fail" = 0 ]
