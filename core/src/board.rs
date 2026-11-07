@@ -304,3 +304,10 @@ fn set_board_row(board: &Path, number: &str, status: &str) -> io::Result<()> {
     file.set_len(end)?;
     Ok(())
 }
+
+/// Rows of BOARD.md; none when it is missing or unreadable (`check` reports that, `scan` does not).
+pub fn rows(root: &Path) -> Vec<Row> {
+    fs::read_to_string(board_path(root))
+        .map(|text| parse_rows(&text))
+        .unwrap_or_default()
+}

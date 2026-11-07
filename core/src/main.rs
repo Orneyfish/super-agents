@@ -4,6 +4,8 @@
 
 mod board;
 mod gitroot;
+mod isotime;
+mod scan;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -57,6 +59,13 @@ fn main() -> ExitCode {
                 }
                 Err(message) => fail(&message),
             }
+        }
+        ["board", "scan", rest @ ..] if rest.len() <= 1 => {
+            let problems = scan::scan(&root(rest));
+            if !problems.is_empty() {
+                println!("{}", problems.join("\n"));
+            }
+            ExitCode::SUCCESS
         }
         ["board", "root"] => {
             println!("{}", gitroot::main_checkout().display());
