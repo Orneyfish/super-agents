@@ -72,6 +72,8 @@ t eval-passed-traversal 1 $X/check-evals.sh $D --passed;           has eval-pass
 sedi 's#evidence/../RD.md#evidence/gone.png: ok#' $D/results.md; : > $D/evidence/gone.png
 t eval-passed-empty-file 1 $X/check-evals.sh $D --passed;          has eval-passed-empty-file "does not exist or is empty"
 echo ok > $D/evidence/gone.png; t eval-passed-again 0 $X/check-evals.sh $D --passed
+# #7: a fingerprint with CRLF line ends (Windows, or git autocrlf) still matches
+cp $D/.evals.sha256 $T/fp.bak; sed 's/$/\r/' $T/fp.bak > $D/.evals.sha256; t eval-passed-crlf-fingerprint 0 $X/check-evals.sh $D --passed; cp $T/fp.bak $D/.evals.sha256
 # the evals the user approved are fingerprinted when marked ready; changing them afterwards fails the gate
 [ -s $D/.evals.sha256 ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL ready did not write .evals.sha256"; }
 cp $D/evals.md $T/evals.bak; printf '\n<!-- loosened -->\n' >> $D/evals.md
@@ -132,6 +134,15 @@ for i in 1 2 3 4 5; do state
   echo "{\"cwd\":\"$T/repo\",\"session_id\":\"A\"}" | $X/eval-gate.sh > $T/ra.out & echo "{\"cwd\":\"$T/repo\",\"session_id\":\"B\"}" | $X/eval-gate.sh > $T/rb.out & wait
   [ "$(cat $T/ra.out $T/rb.out | grep -c '"decision": "block"')" = 1 ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL gate race round $i: not exactly one session was gated"; }
 done
+# #5: a state file whose last line has no newline must not swallow the claim ("---session: A")
+printf -- "---\ndir: %s\nactive: true\nawaiting_user: false\ngate_blocks: 0\n---" "$D" > $st
+gs A; has gate-claim-no-newline '"decision": "block"'
+grep -q '^session: A$' $st && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL gate-claim-no-newline: the claim is not on its own line: $(tail -c 40 $st)"; }
+gs B; silent gate-claim-no-newline-other
+# #5: a loop that recorded its owner when it started is gated only for that owner, whichever session stops first
+printf -- "---\ndir: %s\nactive: true\nawaiting_user: false\ngate_blocks: 0\nsession: A\n---\n" "$D" > $st
+gs B; silent gate-recorded-owner-other-first
+gs A; has gate-recorded-owner-gated '"decision": "block"'
 sedi 's/| E2 | fail |/| E2 | pass |/' $D/results.md; rm -rf .super-agents
 
 # ---- job-status.sh + worker-gate.sh (SubagentStop)
@@ -145,18 +156,20 @@ wg() { LAST=$(echo "{\"cwd\":\"$W\",\"agent_type\":\"$1\"}" | $X/worker-gate.sh)
 wg super-agents:builder; silent wgate-other-agent
 sedi 's/| E2 | pass |/| E2 | fail |/' $T/repo/$D/results.md
 wg super-agents:worker; has wgate-blocks '"decision": "block"'
-$X/job-status.sh blocked why; wg worker; silent wgate-blocked-phase
-$X/job-status.sh building; echo 3 > .job/gate_blocks; wg worker; has wgate-cap "released after 3 blocks"
+# #7: only this plugin's worker is gated; another plugin's (or a bare) 'worker' gets neither a block nor a notice
+wg other-plugin:worker; silent wgate-other-plugin-worker; wg worker; silent wgate-bare-worker
+$X/job-status.sh blocked why; wg super-agents:worker; silent wgate-blocked-phase
+$X/job-status.sh building; echo 3 > .job/gate_blocks; wg super-agents:worker; has wgate-cap "released after 3 blocks"
 # M2: going back to building (a fix round) starts a fresh block count
 echo 2 > .job/gate_blocks; $X/job-status.sh building; [ ! -f .job/gate_blocks ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL building did not reset gate_blocks"; }
-sedi 's/| E2 | fail |/| E2 | pass |/' $T/repo/$D/results.md; wg worker; silent wgate-passing
+sedi 's/| E2 | fail |/| E2 | pass |/' $T/repo/$D/results.md; wg super-agents:worker; silent wgate-passing
 # M2: init stores an absolute ticket dir; a relative one in status.json is resolved against the worker's cwd, not the hook's
 W3=$T/wt3; mkdir -p $W3/$D $W3/.job; cp -R $T/repo/$D/. $W3/$D/; sedi 's/| E2 | pass |/| E2 | fail |/' $W3/$D/results.md
 (cd $W3 && $X/job-status.sh init 001 $D building); [[ $(jget dir < $W3/.job/status.json) == /* ]] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL job-status init kept a relative dir"; }
 sedi 's#"dir": "[^"]*"#"dir": "specs/tickets/001-found"#' $W3/.job/status.json
-cd $T/repo || exit; LAST=$(echo "{\"cwd\":\"$W3\",\"agent_type\":\"worker\"}" | $X/worker-gate.sh); has wgate-relative-dir '"decision": "block"'
+cd $T/repo || exit; LAST=$(echo "{\"cwd\":\"$W3\",\"agent_type\":\"super-agents:worker\"}" | $X/worker-gate.sh); has wgate-relative-dir '"decision": "block"'
 # M2: a worker whose gate cannot run is told so
-LAST=$(echo "{\"cwd\":\"$T/np\",\"agent_type\":\"worker\"}" | $X/worker-gate.sh); has wgate-skip-notice "worker gate skipped"
+LAST=$(echo "{\"cwd\":\"$T/np\",\"agent_type\":\"super-agents:worker\"}" | $X/worker-gate.sh); has wgate-skip-notice "worker gate skipped"
 cd $T/repo || exit
 
 # ---- board.py scan (watchdog)
@@ -214,6 +227,10 @@ t init-idempotent 0 $X/init-project.sh $T/p1;                      hasnt init-id
 mkdir -p $T/p4; git -C $T/p4 init -q -b main; printf '# P\n<!-- SUPER_AGENTS_START -->\nold\nrules the user wrote\n' > $T/p4/CLAUDE.md; cp $T/p4/CLAUDE.md $T/p4.bak
 t init-no-end 0 $X/init-project.sh $T/p4;                          has init-no-end "no SUPER_AGENTS_END"
 cmp -s $T/p4/CLAUDE.md $T/p4.bak && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL init rewrote a CLAUDE.md that has no END marker"; }
+# #7: an END marker that comes before START is no END for this block; refreshing would delete everything after START
+mkdir -p $T/p7; git -C $T/p7 init -q -b main; printf 'keep1\n<!-- SUPER_AGENTS_END -->\nkeep2\n<!-- SUPER_AGENTS_START -->\nold\nkeep3\n' > $T/p7/CLAUDE.md; cp $T/p7/CLAUDE.md $T/p7.bak
+t init-end-before-start 0 $X/init-project.sh $T/p7;                has init-end-before-start "no SUPER_AGENTS_END"
+cmp -s $T/p7/CLAUDE.md $T/p7.bak && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL init rewrote a CLAUDE.md whose END marker comes before START: $(tr '\n' '|' < $T/p7/CLAUDE.md)"; }
 # M6: only marker LINES count; prose that names the markers is the user's text and must survive
 mkdir -p $T/p5; git -C $T/p5 init -q -b main
 printf '# Project\nWe use the SUPER_AGENTS_START marker from the plugin.\nrule A: never touch billing/\nrule B: run make lint\nIt ends at SUPER_AGENTS_END.\nrule C\n' > $T/p5/CLAUDE.md
@@ -241,6 +258,14 @@ echo mine > mine.txt; git add mine.txt; echo again >> specs/tickets/003-profile/
 t launch-staged 0 bash -c "echo y | PATH=$T/bin:\$PATH $X/superagent.sh"
 ! git show --name-only --format= HEAD | grep -q mine.txt && git diff --cached --name-only | grep -q mine.txt && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL launch committed (or unstaged) the user's own staged file"; }
 git rm -q --cached mine.txt; rm mine.txt
+# #7: tickets approved after launch are committed by commit-tickets (the router has no Bash); it lists what it commits
+echo late > specs/tickets/003-profile/late.md; echo mine > CLAUDE.md
+t commit-tickets-no 1 bash -c "echo n | $X/commit-tickets.sh"; has commit-tickets-lists-ticket "late.md"; has commit-tickets-lists-claude "CLAUDE.md"; has commit-tickets-no "refusing"
+t commit-tickets-yes 0 bash -c "echo y | $X/commit-tickets.sh"
+[ -z "$(git status --porcelain -- specs/tickets CLAUDE.md)" ] && git cat-file -e HEAD:specs/tickets/003-profile/late.md && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL commit-tickets did not commit the new ticket file"; }
+t commit-tickets-clean 0 $X/commit-tickets.sh; has commit-tickets-clean "nothing to commit"
+echo again >> specs/tickets/003-profile/late.md; t commit-tickets-yes-flag 0 $X/commit-tickets.sh -y; [ -z "$(git status --porcelain -- specs/tickets)" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL commit-tickets -y left changes"; }
+git switch -q main; echo more >> specs/tickets/003-profile/late.md; t commit-tickets-on-main 1 $X/commit-tickets.sh -y; has commit-tickets-on-main "integration branch"; git checkout -q -- specs/tickets; git switch -q feat/y
 git switch -q main; git branch -q -D feat/y
 
 # ---- hooks
@@ -277,12 +302,46 @@ done
 for c in 'curl -s x | grep -n ok' "curl -s x | sed 's/a/b/'" 'curl -s x | jq .items | head -3'; do
   ftu super-agents:first-time-user "$c"; silent "hook-ftu-allowed: $c"
 done
+# #6: a filter after a pipe that is given a file reads that file and ignores its stdin; only a slash used to give that away
+for c in 'curl -s localhost:3000/ | head main.py' 'curl -s localhost:3000/ | grep def app.py' 'curl -s localhost:3000/ | sed -n 1,40p app.py' 'curl -s localhost:3000/ | tail -n +1 server.js' './run.sh | head app.py' \
+         'curl -s x | wc -l main.py' 'curl -s x | sort main.py' 'curl -s x | cut -d, -f1 data.csv' 'curl -s x | jq .a data.json' 'curl -s x | uniq main.py' 'curl -s x | head -n 5 main.py' \
+         'curl -s x | grep ok < main.py' 'curl -s x | head < main.py' "curl -s x | sed 'r main.py'" "curl -s x | sed -n '1R main.py'" 'curl -s x | grep -e ok main.py' 'curl -s x | grep ok main.py app.py'; do
+  ftu super-agents:first-time-user "$c"; has "hook-ftu-denied: $c" '"permissionDecision": "deny"'
+done
+for c in 'curl -s localhost:3000/ | head -n 5' 'curl -s x | tail -n +2' "curl -s x | sed -n '1,40p'" 'curl -s x | cut -d, -f1' 'curl -s x | cut -d , -f 1' 'curl -s x | sort | uniq -c' 'curl -s x | sort -k 2 -n | head -3' 'curl -s x | wc -l' \
+         'curl -s x | grep -A 2 error' 'curl -s x | grep -nA 2 error' 'curl -s x | grep "two words"' "curl -s x | grep -o 'href=\"/a/b\"'" 'curl -s x | grep -e ok -e done' 'curl -s x | jq -r .items[0].name' 'curl -s x | tr a-z A-Z' './run.sh | head -20 | tail -n 5'; do
+  ftu super-agents:first-time-user "$c"; silent "hook-ftu-allowed: $c"
+done
+# #6: a | or ; inside quotes does not end the stage, so the file after it is still an operand
+for c in 'curl -s x | grep "a|b" main.py' "curl -s x | grep 'a|b' main.py" 'curl -s x | grep "a\" | b" main.py' 'curl -s x | sed "s/a;b/c/" main.py'; do
+  ftu super-agents:first-time-user "$c"; has "hook-ftu-denied: $c" '"permissionDecision": "deny"'
+done
+for c in 'curl -s x | grep "a|b"' 'curl -s x | grep -E "error|warn" | head -5' "curl -s x | sed 's/a;b/c/'"; do
+  ftu super-agents:first-time-user "$c"; silent "hook-ftu-allowed: $c"
+done
+# #6: sed can run or write through its s flags too; writing the filtered output to a file is not a read
+for c in "curl -s x | sed 's/.*/cat main.py/e'" "curl -s x | sed 's|.*|cat main.py|e'" "curl -s x | sed -n 's/a/b/w out.txt'" 'curl -s x | grep ">" main.py' 'curl -s x | head >(cat main.py)'; do
+  ftu super-agents:first-time-user "$c"; has "hook-ftu-denied: $c" '"permissionDecision": "deny"'
+done
+for c in 'curl -s x | head -5 > out.txt' 'curl -s x | head -5 >> out.txt' 'curl -s x | grep ok 2>/dev/null' 'curl -s x | grep ok >out.txt' 'curl -s x | grep ">"' "curl -s x | sed 's/a/b/g'" "curl -s x | sed 's/error/ok/i'"; do
+  ftu super-agents:first-time-user "$c"; silent "hook-ftu-allowed: $c"
+done
+# #6 follow-up: reading a file through $(<f), `<f` or the `.` builtin (source) is a read like cat is
+for c in 'echo $(<main.py)' 'echo "$(<main.py)"' 'x=$( < main.py)' 'echo `<main.py`' '. ./main.sh' 'cd /tmp && . ./run.sh' 'if true; then . f; fi'; do
+  ftu super-agents:first-time-user "$c"; has "hook-ftu-denied: $c" '"permissionDecision": "deny"'
+done
+for c in 'echo done.' './launcher.sh add "a . b"' 'curl -d "x=$(date)" http://localhost:3000/' 'curl -s x > out.txt' './launcher.sh list | sort | wc -l' 'curl -s http://localhost:3000/ -d "<a>1</a>"'; do
+  ftu super-agents:first-time-user "$c"; silent "hook-ftu-allowed: $c"
+done
 python3 -c 'import json,sys;sys.exit("mcp__claude-in-chrome__" not in json.load(open(sys.argv[1]))["hooks"]["PreToolUse"][0]["matcher"])' "$R/hooks/hooks.json" && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL hooks.json matcher does not cover the browser tools"; }
 LAST=$(echo "{\"cwd\":\"$T/np\"}" | $X/session-start.sh); has session-agreement "super-agents plugin is active"
 # L4: the active-loop note lists dir and round
 mkdir -p $T/p6/.super-agents; git -C $T/p6 init -q -b main; touch $T/p6/review.md; printf -- '---\ndir: specs/x\nactive: true\nround: 2\n---\n' > $T/p6/.super-agents/state.md
 LAST=$(echo "{\"cwd\":\"$T/p6\"}" | $X/session-start.sh); has session-active-loop "dir specs/x round 2"
 LAST=$(echo "{\"cwd\":\"$T/repo\"}" | $X/session-start.sh); has session-nudge "/super-agents:setup-project"
+# #5: the session id goes into the context, so the review-loop can record who started the loop
+LAST=$(echo "{\"cwd\":\"$T/repo\",\"session_id\":\"sessZ\"}" | $X/session-start.sh); has session-start-id "This session's id is sessZ"
+LAST=$(echo "{\"cwd\":\"$T/repo\"}" | $X/session-start.sh); hasnt session-start-no-id "session's id"
 t session-no-python 0 env PATH="$T/nopath" "$BASH" $X/session-start.sh;  has session-no-python "python3 is not installed"   # hooks need python3; say so instead of silently doing nothing
 
 
@@ -336,7 +395,14 @@ ok() { pass=$((pass+1)); }; bad() { fail=$((fail+1)); echo "FAIL $*"; }
 for f in "$R"/agents/*.md "$R"/skills/*/SKILL.md; do
   grep -qE 'job-status\.sh|board\.py' "$f" && bad "$f names job-status.sh or board.py directly; use 'super-agents job-status' / 'super-agents board'" || ok
 done
-python3 -B -c 'import ast,sys;ast.parse(open(sys.argv[1]).read())' "$X/board.py" && ok || bad "scripts/board.py does not parse"
+for py in "$X"/*.py; do python3 -B -c 'import ast,sys;ast.parse(open(sys.argv[1]).read())' "$py" && ok || bad "scripts/$(basename "$py") does not parse"; done
+# #7: only the job that publishes may write to the repository; the job that runs the tests gets a read-only token
+[ "$(grep -c 'contents: write' "$R/.github/workflows/release.yml")" = 1 ] && awk '/^  [a-z]+:$/{job=$1} /contents: write/{print job}' "$R/.github/workflows/release.yml" | grep -qx 'publish:' && ok || bad "release.yml: contents: write must appear once, in the publish job only"
+# #7: prompt changes with no behaviour to run: guard them against being undone (the router cannot commit tickets; the merger blocks only on a running team; the reviewer is given its base)
+grep -q 'super-agents commit-tickets' "$R/agents/router.md" && ok || bad "router.md no longer asks the user to run 'super-agents commit-tickets' for tickets approved late"
+grep -q "building.*team" "$R/agents/merger.md" && grep -q 'stray files' "$R/agents/merger.md" && ok || bad "merger.md no longer tells a running team's files from stray files"
+grep -q '^base: ' "$R/skills/review-loop/SKILL.md" && grep -q '`base` and `checkpoint`' "$R/skills/review-loop/SKILL.md" && grep -q '`base` in round 1' "$R/agents/reviewer.md" && ok || bad "the review-loop no longer records base or passes base and checkpoint to the reviewer"
+t sa-commit-tickets-route 1 bash -c "cd $T && $SA commit-tickets"; has sa-commit-tickets-route "not inside a git repo"
 v1=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["version"])' "$R/.claude-plugin/plugin.json"); v2=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["plugins"][0]["version"])' "$R/.claude-plugin/marketplace.json")
 [ -n "$v1" ] && [ "$v1" = "$v2" ] && ok || bad "manifest versions differ: plugin.json '$v1', marketplace.json '$v2'"
 for s in $(python3 -c 'import json,re,sys;print(*re.findall(r"/scripts/([A-Za-z0-9._-]+)", open(sys.argv[1]).read()))' "$R/hooks/hooks.json"); do

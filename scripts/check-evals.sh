@@ -49,7 +49,7 @@ if [ "$passed" = 1 ]; then
   fi
   if [ -f "$fp" ]; then
     got=$(python3 -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$ev")
-    [ "$got" = "$(tr -d ' \n' < "$fp")" ] || fail "evals.md changed after the user approved it; restore it (git checkout) or ask the user to re-approve"
+    [ "$got" = "$(tr -d ' \r\n' < "$fp")" ] || fail "evals.md changed after the user approved it; restore it (git checkout) or ask the user to re-approve"
   else   # no fingerprint means nothing proves these are the approved evals; tickets approved before fingerprints existed need one re-approval
     fail "no approval fingerprint (.evals.sha256) for $d; ask the user to approve it again with mark-ready"
   fi

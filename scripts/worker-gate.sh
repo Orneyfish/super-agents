@@ -4,7 +4,7 @@
 here="$(cd "$(dirname "$0")" && pwd)"; get() { "$here/hookio.py" get "$@"; }; emit() { "$here/hookio.py" emit "$@"; }
 in=$(cat)
 grep -q worker <<<"$in" || exit 0                                       # cheap pre-filter
-re='(^|:)worker$'; [[ $(get agent_type <<<"$in") =~ $re ]] || exit 0
+[ "$(get agent_type <<<"$in")" = super-agents:worker ] || exit 0
 skip() { emit message "super-agents: worker gate skipped ($1); nothing checked that its evals pass."; exit 0; }
 cwd=$(get cwd <<<"$in"); st="$cwd/.job/status.json"; [ -f "$st" ] || skip "no $st"
 dir=$(get dir <"$st"); [[ $dir == /* ]] || dir="$cwd/$dir"; [ -d "$dir" ] || skip "ticket dir $dir does not exist"

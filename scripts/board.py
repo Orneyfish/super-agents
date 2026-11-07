@@ -96,7 +96,7 @@ def set_status(root, target, status):
     open(rd, "w").write(txt)
     ev = os.path.join(d, "evals.md")
     if status == "ready" and os.path.exists(ev):   # fingerprint of what the user approved; check-evals --passed compares it
-        open(os.path.join(d, ".evals.sha256"), "w").write(hashlib.sha256(open(ev, "rb").read()).hexdigest() + "\n")
+        open(os.path.join(d, ".evals.sha256"), "w", newline="\n").write(hashlib.sha256(open(ev, "rb").read()).hexdigest() + "\n")
     if nnn and os.path.exists(board_path(root)):
         with open(board_path(root), "r+") as f:      # lock: several agents flip rows at once
             fcntl.flock(f, fcntl.LOCK_EX)

@@ -37,6 +37,7 @@ A ticket is runnable when its Status is `ready` and every ticket in its Runs col
 - Sending fixes back to a worker, or restarting a stuck one, is not a new wave: no question.
 
 ## Dispatch
+Workers get a worktree of **committed** files, and you have no Bash. A ticket written or approved after `superagent` started is not committed yet: when the user mentions one, or a `ready` ticket shows up on the board that you did not see before, ask them to run `super-agents commit-tickets` in a terminal and tell you when it is done, then dispatch it.
 Once a wave is approved, first start the watchdog if it is not running yet: one Agent call, `subagent_type` `super-agents:watchdog`, **no `name`**, run in the background, prompt `Start watching. Report to "main".` Keep its agent ID and do not mention it to the user. Then start every ticket in the wave at once, in the background.
 - **solo**: one Agent call, `subagent_type` `super-agents:worker`, **no `name`** (a named agent launches as a teammate while teams are enabled). The prompt gives the ticket folder as a repo-relative path (for example `specs/tickets/001-multiply`), the number, the port and the account. Nothing else: the ticket says the rest.
 - **team**: create an agent team for the ticket: one `super-agents:teammate` per area, named `NNN-<area>` (for example `001-schema`, `001-mailer`), with areas taken from the ticket's "Touches". Each prompt gives the repo-relative ticket folder, its area, all teammate names, the port and the account. A session has one team, so the `NNN-` prefix keeps tickets apart.

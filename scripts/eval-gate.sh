@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Stop hook: while a review-loop is active, refuse "done" until every eval passes in results.md.
 # Escape hatches (so it can never wedge a session): awaiting_user, a stale state file, and a 3-block cap.
-# The first session to stop while the loop is active claims it (a 'session:' line); other sessions in the repo are never gated.
+# The gate applies to one session per loop, the 'session:' line of state.md. The review-loop records the session that started it
+# (its id comes from the SessionStart context). A state file without that line falls back to a claim: the first session to stop
+# while the loop is active takes it, which can be an unrelated session that answers a short question first. Other sessions are never gated.
 here="$(cd "$(dirname "$0")" && pwd)"; get_json() { "$here/hookio.py" get "$@"; }
 in=$(cat); cwd=$(get_json cwd <<<"$in"); st="$cwd/.super-agents/state.md"
 [ -f "$st" ] || exit 0
@@ -11,7 +13,8 @@ get() { sed -n "s/^$1: *//p" "$st" | head -1; }
 [ "$(get awaiting_user)" = true ] && exit 0           # waiting on the human, not claiming done
 dir=$(get dir); [[ $dir =~ ^[A-Za-z0-9._/-]+$ && $dir != *..* && -d "$cwd/$dir" ]] || exit 0
 sid=$(get_json session_id <<<"$in"); owner=$(get session)
-if [ -z "$owner" ] && [ -n "$sid" ]; then echo "session: $sid" >> "$st"; owner=$(get session); fi   # re-read: with two claims at once the first line wins
+# one append (a missing final newline would otherwise merge the claim into the last line); re-read: with two claims at once the first line wins
+if [ -z "$owner" ] && [ -n "$sid" ]; then nl=; [ -n "$(tail -c1 "$st")" ] && nl=$'\n'; printf '%ssession: %s\n' "$nl" "$sid" >> "$st"; owner=$(get session); fi
 [ -n "$owner" ] && [ -n "$sid" ] && [ "$owner" != "$sid" ] && exit 0
 
 out=$("$(dirname "$0")/check-evals.sh" "$cwd/$dir" --passed) && exit 0
