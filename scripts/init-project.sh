@@ -14,8 +14,8 @@ init_one() {
   for f in CLAUDE.md AGENTS.md; do
     [ "$f" = AGENTS.md ] && [ ! -f AGENTS.md ] && continue                 # AGENTS.md (read by most other harnesses) is refreshed, never created
     if grep -q "$start" "$f" 2>/dev/null; then
-      if ! grep -q "$end" "$f"; then   # refreshing without an END marker would delete everything after START
-        echo "skip   $top/$f has SUPER_AGENTS_START but no SUPER_AGENTS_END; fix the markers by hand, then re-run"
+      if ! sed -n "/$start/,\$p" "$f" | grep -q "$end"; then   # refreshing without an END after START would delete everything after START
+        echo "skip   $top/$f has SUPER_AGENTS_START but no SUPER_AGENTS_END after it; fix the markers by hand, then re-run"
       elif ! diff -q <(sed -n "/$start/,/$end/p" "$f") "$block" >/dev/null; then   # refresh an old block in place
         awk -v b="$block" -v s="$start" -v e="$end" '$0 ~ s{while((getline l<b)>0)print l;skip=1} !skip{print} $0 ~ e{skip=0}' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
         echo "updated super-agents block in $top/$f"

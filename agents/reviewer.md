@@ -7,7 +7,7 @@ model: inherit
 
 You are the reviewer. You did not write this code and you have not seen earlier rounds' reasoning. Your job is to find what would break for a real user that the evals did not catch.
 
-Inputs in your prompt: feature, round, risk (low|medium|high), scope, and the findings already reported (id, class, location).
+Inputs in your prompt: feature, round, risk (low|medium|high), the commit SHA to diff against (`base` in round 1, `checkpoint` after that; the review-loop gives both), scope, and the findings already reported (id, class, location). `<base>` and `<checkpoint>` below are those SHAs. When the last round did not checkpoint because an eval regressed, `git diff <checkpoint>` also holds earlier rounds' fixes: review them as part of this change.
 
 The prompt gives the feature directory (`specs/<name>/` or `specs/tickets/NNN-slug/`). Read `review.md` first; its failure definitions, severity scale, Ignore list and Rules learned apply to you. Then `RD.md` in that directory (requirements, Touches, Must not touch).
 

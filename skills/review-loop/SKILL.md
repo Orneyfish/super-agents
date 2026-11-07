@@ -29,6 +29,7 @@ risk: <risk>
 round: 0
 max_rounds: 5
 gate_blocks: 0
+base: <git rev-parse HEAD>
 checkpoint: <git rev-parse HEAD>
 ---
 | id | class | severity | location | first | last | status |
@@ -47,9 +48,9 @@ checkpoint: <git rev-parse HEAD>
    |------|--------|----------|
    | E1 | pass | evidence/E1-signup.png: welcome banner visible |
    ```
-4. **Review.** Spawn `super-agents:reviewer` with `<dir>`, N, risk, and the already-reported findings (id, class, location). Scope: round 1 the whole change vs the branch base; round 2+ only the diff since `checkpoint`. It reports each problem with a class label and does not repeat old findings. Update the `**Review:**` line in `results.md` (`clean`, `findings-fixed`, or `open: <n>`).
+4. **Review.** Spawn `super-agents:reviewer` with `<dir>`, N, risk, `base` and `checkpoint` (the commit SHAs from the state file), and the already-reported findings (id, class, location). Scope: round 1 the whole change vs `base`; round 2+ the diff since `checkpoint`, which is more than the latest fixes when step 6 skipped the checkpoint after a regression (the reviewer is told). It reports each problem with a class label and does not repeat old findings. Update the `**Review:**` line in `results.md` (`clean`, `findings-fixed`, or `open: <n>`).
 5. **Record.** Add new findings to the table with ids; update `last` for any marked `STILL-PRESENT`; mark findings fixed when the reviewer no longer sees them.
-6. **Checkpoint.** If no previously passing eval regressed, commit: `git add -A && git commit -m "super-agents(<name>): round N, P/T evals pass"`, (`.super-agents/` is git-ignored by `init`), then set `checkpoint:` to the new HEAD. Committing relies on the project's CLAUDE.md super-agents block; if it is missing, ask once before the first commit. Never push.
+6. **Checkpoint.** If no previously passing eval regressed, commit: `git add -A && git commit -m "super-agents(<name>): round N, P/T evals pass"`, (`.super-agents/` is git-ignored by `init`), then set `checkpoint:` to the new HEAD; if an eval regressed, commit nothing and leave `checkpoint:` as it is. Committing relies on the project's CLAUDE.md super-agents block; if it is missing, ask once before the first commit. Never push.
 7. **Decide, in this order:**
    - **Done**: every eval passes and the reviewer's verdict is `clean` (nothing at or above the risk threshold).
    - **Stuck**: a finding of the same class and location is still open after two rounds of fixes. Stop and show the user the finding; the builder is not converging.
