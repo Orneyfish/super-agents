@@ -23,10 +23,10 @@ cmd=$(get tool_input.command <<<"$in"); cwd=$(get cwd <<<"$in")
 # Exception: when the line starts with curl, wget, bash/sh or a path (the app or its launcher), a plain filter after a pipe reads that
 # command's output, not a file, so `curl ... | grep ok` passes. A filter is plain only if it reads nothing but its stdin: any operand is a
 # file (`head main.py`), except the one pattern, script or program that grep, sed and jq take (`plain_stage` below). Anything unfamiliar is not plain.
-verbs='cat|head|tail|less|more|bat|nl|tac|grep|egrep|rg|ag|ack|find|fd|ls|tree|sed|awk|cut|strings|xxd|od|diff|git|vi|vim|nvim|nano|emacs|source|python3?|node|perl|ruby|eval|exec|xargs|env|sudo|nohup|time|command|sort|uniq|wc|jq|sqlite3|base64|paste|rev|tee|cp|mv|dd|hexdump|column|fold|file|stat|tar|unzip|zcat|cmp|comm|join'
+verbs='\.|cat|head|tail|less|more|bat|nl|tac|grep|egrep|rg|ag|ack|find|fd|ls|tree|sed|awk|cut|strings|xxd|od|diff|git|vi|vim|nvim|nano|emacs|source|python3?|node|perl|ruby|eval|exec|xargs|env|sudo|nohup|time|command|sort|uniq|wc|jq|sqlite3|base64|paste|rev|tee|cp|mv|dd|hexdump|column|fold|file|stat|tar|unzip|zcat|cmp|comm|join'
 filters='head|tail|grep|egrep|sort|uniq|wc|cut|tr|jq|less|more|sed'
 start='(^|[;&|({`]|\$\()[[:space:]]*((then|do|else|elif|if|while|until|!)[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*([^[:space:];&|(){`]*/)?'
-paths='\.\./|(^|[^A-Za-z0-9])[Ff][Ii][Ll][Ee]:|(^|[ =:"'"'"'<>])\.?/?(src|app|lib|server|backend|frontend|specs)/'
+paths='\.\./|(^|[^A-Za-z0-9])[Ff][Ii][Ll][Ee]:|(^|[ =:"'"'"'<>])\.?/?(src|app|lib|server|backend|frontend|specs)/|\$\([[:space:]]*<|`[[:space:]]*<'
 # The words of $1 as the shell splits them: quotes removed, nothing expanded, an unclosed quote runs to the end. Sets W (the words),
 # RD (1 for a word that holds an unquoted >, a redirection to a file) and R=1 when an unquoted < appears (a redirection or <(...)
 # reads a file). A quote or backslash the shell reads differently only adds words here, which makes a stage less plain, never more.

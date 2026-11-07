@@ -326,6 +326,13 @@ done
 for c in 'curl -s x | head -5 > out.txt' 'curl -s x | head -5 >> out.txt' 'curl -s x | grep ok 2>/dev/null' 'curl -s x | grep ok >out.txt' 'curl -s x | grep ">"' "curl -s x | sed 's/a/b/g'" "curl -s x | sed 's/error/ok/i'"; do
   ftu super-agents:first-time-user "$c"; silent "hook-ftu-allowed: $c"
 done
+# #6 follow-up: reading a file through $(<f), `<f` or the `.` builtin (source) is a read like cat is
+for c in 'echo $(<main.py)' 'echo "$(<main.py)"' 'x=$( < main.py)' 'echo `<main.py`' '. ./main.sh' 'cd /tmp && . ./run.sh' 'if true; then . f; fi'; do
+  ftu super-agents:first-time-user "$c"; has "hook-ftu-denied: $c" '"permissionDecision": "deny"'
+done
+for c in 'echo done.' './launcher.sh add "a . b"' 'curl -d "x=$(date)" http://localhost:3000/' 'curl -s x > out.txt' './launcher.sh list | sort | wc -l' 'curl -s http://localhost:3000/ -d "<a>1</a>"'; do
+  ftu super-agents:first-time-user "$c"; silent "hook-ftu-allowed: $c"
+done
 python3 -c 'import json,sys;sys.exit("mcp__claude-in-chrome__" not in json.load(open(sys.argv[1]))["hooks"]["PreToolUse"][0]["matcher"])' "$R/hooks/hooks.json" && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL hooks.json matcher does not cover the browser tools"; }
 LAST=$(echo "{\"cwd\":\"$T/np\"}" | $X/session-start.sh); has session-agreement "super-agents plugin is active"
 # L4: the active-loop note lists dir and round
