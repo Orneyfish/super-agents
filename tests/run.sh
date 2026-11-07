@@ -484,6 +484,12 @@ LAST=$("$X/eval-gate.sh" <<<"${gate_in[1]}");        has eval-gate-with-core '"d
 LAST=$("$X/worker-gate.sh" <<<"${gate_in[3]}");      has worker-gate-with-core '"decision": "block"'
 LAST=$("$X/block-code-reads.sh" <<<"${gate_in[5]}"); has block-code-reads-with-core '"permissionDecision": "deny"'
 sedi 's/| E2 | fail |/| E2 | pass |/' $D/results.md; rm -rf .super-agents $W/.job/gate_blocks
+# build-core.yml is about to be used for the first time: the default token is read-only, checkout stores no token where a dependency's
+# build script could read it, and a version that is already published is refused (a re-run would replace the live binaries)
+bc="$R/.github/workflows/build-core.yml"
+[ "$(awk '/^permissions:/{p=1;next} p&&/contents:/{print $2; exit}' "$bc")" = read ] && ok || bad "build-core.yml: the workflow-level token must be contents: read"
+[ "$(grep -c 'persist-credentials: false' "$bc")" = "$(grep -c 'actions/checkout@' "$bc")" ] && ok || bad "build-core.yml: every checkout needs persist-credentials: false"
+grep -q 'isDraft' "$bc" && ok || bad "build-core.yml: must refuse a release that is already published (isDraft)"
 for c in "$R"/evals/*/; do n=$(basename "$c"); [ "$n" = results ] && continue   # a case without a grader fails to load in 'claude plugin eval'
   [ -f "$c/prompt.md" ] && [ -n "$(ls "$c"/graders/*.md 2>/dev/null)" ] && ok || bad "eval case $n needs prompt.md and at least one graders/*.md"
 done
