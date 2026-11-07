@@ -25,13 +25,14 @@ eq hookio-get-nested "$(echo "$J" | $H get a.b)" "x y";            eq hookio-get
 eq hookio-get-object "$(echo "$J" | $H get o)" '{"k":[1]}';        eq hookio-get-bool "$(echo "$J" | $H get t)" true
 eq hookio-get-missing "$(echo "$J" | $H get a.nope.deeper)" "";    eq hookio-get-null "$(echo "$J" | $H get z)" ""
 eq hookio-get-bad-json "$(echo '{oops' | $H get a 2>/dev/null)" ""; t hookio-bad-json-exit 1 bash -c "echo '{oops' | $H get a"
+# each response is parsed and checked at the exact path Claude Code reads, so a field under the wrong parent fails
 t hookio-emit-block 0 $H emit block 'line1
-line2 "quoted" é';                                                  has hookio-emit-block '"decision": "block"'
+line2 "quoted" é';                                                  eq hookio-emit-block "$(echo "$LAST" | $H get decision)" block
 eq hookio-emit-roundtrip "$(echo "$LAST" | $H get reason)" 'line1
 line2 "quoted" é'
-t hookio-emit-deny 0 $H emit deny why;                              has hookio-emit-deny '"permissionDecision": "deny"'
-t hookio-emit-context 0 $H emit context hi;                         has hookio-emit-context '"additionalContext": "hi"'
-t hookio-emit-message 0 $H emit message hi;                         has hookio-emit-message '"systemMessage": "hi"'
+t hookio-emit-deny 0 $H emit deny why;                              eq hookio-emit-deny "$(echo "$LAST" | $H get hookSpecificOutput.permissionDecision)/$(echo "$LAST" | $H get hookSpecificOutput.permissionDecisionReason)/$(echo "$LAST" | $H get hookSpecificOutput.hookEventName)" "deny/why/PreToolUse"
+t hookio-emit-context 0 $H emit context hi;                         eq hookio-emit-context "$(echo "$LAST" | $H get hookSpecificOutput.additionalContext)/$(echo "$LAST" | $H get hookSpecificOutput.hookEventName)" "hi/SessionStart"
+t hookio-emit-message 0 $H emit message hi;                         eq hookio-emit-message "$(echo "$LAST" | $H get systemMessage)" hi; eq hookio-emit-message-top-level "$(echo "$LAST" | $H get hookSpecificOutput)" ""
 t hookio-usage 1 $H
 
 # ---- fixture: git repo with three tickets
