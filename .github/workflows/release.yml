@@ -1,0 +1,28 @@
+name: Release
+
+# Push a tag like v0.2.1 that matches .claude-plugin/plugin.json to cut a GitHub release.
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag must match the plugin version
+        run: |
+          v=$(jq -r .version .claude-plugin/plugin.json)
+          [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME does not match plugin.json version v$v" >&2; exit 1; }
+      - name: ShellCheck
+        run: shellcheck -x -S warning bin/super-agents scripts/*.sh tests/run.sh .githooks/pre-push
+      - name: Tests
+        run: bash tests/run.sh
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag

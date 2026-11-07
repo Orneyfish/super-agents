@@ -7,6 +7,8 @@ A Claude Code plugin that makes agents prove their work before calling it done, 
 
 ## Install
 
+Needs `bash`, `git`, `jq` and `python3` (Linux or macOS). Without `jq` the hooks, including the done-gates, cannot run; each session then says so.
+
 **Claude Code** (everything works: skills, hooks, router and workers):
 
 ```bash
@@ -34,7 +36,7 @@ super-agents link-skills ~/.hermes/skills     # Hermes Agent
 
 | Harness | Skills | Done-gates (hooks) | Router, workers, watchdog | Verified |
 |---|---|---|---|---|
-| **Claude Code** | yes | yes | yes | End to end in live sessions: router, worker in a worktree, tester, reviewer, merger, checker; skills via the `super-agents` command; every gate and hook. 97 script assertions (`tests/run.sh`). Agent **teams** (team-mode tickets) follow the docs but were not exercised live. |
+| **Claude Code** | yes | yes | yes | End to end in live sessions: router, worker in a worktree, tester, reviewer, merger, checker; skills via the `super-agents` command; every gate and hook. Script assertions in `tests/run.sh`, run in CI on Linux and macOS. Agent **teams** (team-mode tickets) follow the docs but were not exercised live. |
 | **Hermes Agent** | yes | no | no (use its own delegation) | All 8 skills discovered and enabled, and the command resolves from a clean login-shell PATH. A live model run was **not completed**: Hermes's configured Copilot provider failed to connect during testing. |
 | **Codex CLI, Gemini CLI, OpenCode, Copilot, Cursor, and others that read Agent Skills (`.agents/skills`)** | expected | no | no | **Not tested** (not installed where this was built). Skills follow the Agent Skills format (name matches folder, description under 1,024 chars; checked by `tests/run.sh`) and call only the `super-agents` command, never a Claude-only variable. |
 
@@ -58,7 +60,7 @@ What degrades outside Claude Code: the hooks that stop an agent from saying "don
 | `/super-agents:review-loop <feature\|NNN>` | Builder, tester, reviewer in rounds until every eval passes and review is clean. Max 5 rounds. |
 | `/super-agents:first-time-user <feature>` | A subagent that cannot read the code uses the live app on a throwaway database and reports where it got stuck. |
 | `/super-agents:fix-bug <problem>` | Reproduce, confirm the cause, fix at the root, add a regression test, use git to find or revert the breaking change. |
-| `superagent` (terminal) | Starts the router for this project. Offers to create an `integration/<timestamp>` branch if you are on main. Enables agent teams for that session only. |
+| `superagent` (terminal) | Starts the router for this project. Offers to create an `integration/<timestamp>` branch if you are on main. Enables agent teams for that session only. Runs with `--permission-mode auto` because workers run unattended (auto mode must be available to your account); pass your own `--permission-mode <mode>` to override. |
 
 ## The agents
 
@@ -82,6 +84,7 @@ specs/tickets/BOARD.md                 # | # | Title | Status | Mode | Runs |
 specs/tickets/001-slug/
   RD.md        # **Status:** draft|ready|building|done, **Risk:**, FR-/NFR- requirements, Touches, Must not touch, Decisions, Out of scope
   evals.md     # Setup, E1..En (check / pass when / fail when / covers), Definition of done. Approved by you; not edited while building
+  .evals.sha256  # fingerprint of evals.md, written when you approve it (mark-ready); the done-gate fails if evals.md changes afterwards
   mockup.html  # UI tickets only
   contract.md  # team tickets: who owns which files, the names they share
   results.md   # written by the worker/tester: one row per eval, pass/fail, evidence path
@@ -93,8 +96,8 @@ Ticket `NNN` runs on port `3100+NNN` with test account `tNNN`; the main checkout
 ## Hooks (Claude Code; always on while the plugin is enabled)
 
 - **SessionStart**: states the "done means proven" agreement; in a git repo without `review.md` suggests `/super-agents:setup-project`; mentions an active loop or a ticket board.
-- **Stop**: while a review-loop is active, blocks "done" until every eval passes in `results.md`. Released when the loop waits on you, when the state file is over 12 hours old, or after 3 blocks.
-- **SubagentStop**: a worker cannot finish until every eval has a pass row with its evidence file (or it declared itself blocked, or after 3 blocks).
+- **Stop**: while a review-loop is active, blocks "done" until every eval passes in `results.md`, each pass row pointing at a non-empty `evidence/` file, and `evals.md` is unchanged since you approved it. Released when the loop waits on you, when the state file is over 12 hours old, or after 3 blocks.
+- **SubagentStop**: a worker cannot finish until the same holds (or it declared itself blocked, or after 3 blocks).
 - **PreToolUse**: keeps only the first-time-user agent away from the code.
 
 ## Known limits
@@ -102,6 +105,17 @@ Ticket `NNN` runs on port `3100+NNN` with test account `tNNN`; the main checkout
 - **Team tickets use Claude Code's experimental agent teams**, which `superagent` enables for its own session only. They only work in an interactive session, are not resumable, and teammates share the main checkout (hence the file-ownership contract).
 - The router restriction is its `tools` list, so it cannot start servers or run `board.py`; workers, the merger and the watchdog do that.
 - `agent-browser` is not bundled. Install it for parallel browser checks: `npm install -g agent-browser && agent-browser install`. Without it the tester, checker and reproducer fall back to the Chrome tools, which are one shared browser.
-- The first-time-user Bash block is a regex denylist, not a sandbox.
+- The done-gates check that evidence files exist and are non-empty, not what they show, and a worker could still delete `.evals.sha256`. The post-merge checker, which re-walks the merged feature in a browser, is the independent check.
+- The first-time-user Bash block is a regex denylist, not a sandbox: it can deny harmless commands that merely contain a word like `cat` or `find` (even inside a quoted argument), and it can be bypassed.
 - Plugin subagents cannot carry their own hooks, so the worker and first-time-user gates are plugin-level hooks keyed on `agent_type`.
 - Parallel agents and router sessions are expensive. Use tickets for work that is worth it, and `classify-risk` to decide how hard to push.
+
+## Development
+
+`bash tests/run.sh` runs the script tests plus consistency checks (manifest versions, hook scripts exist and are executable, agent names match their files, every `super-agents:<name>` reference resolves). It needs `git`, `jq` and `python3`, and runs on Linux and macOS.
+
+- **CI** (`.github/workflows/ci.yml`): the tests on Linux and macOS, plus ShellCheck on Linux, for every push and pull request.
+- **Release** (`.github/workflows/release.yml`): push a tag `vX.Y.Z` that matches `.claude-plugin/plugin.json`; it re-runs ShellCheck and the tests, then creates the GitHub release.
+- **Local gate** (optional): `git config core.hooksPath .githooks` runs the tests before every `git push`.
+
+The agents and skills are prompts, so none of this tests them; that still takes a live run.

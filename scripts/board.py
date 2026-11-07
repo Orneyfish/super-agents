@@ -6,7 +6,7 @@
   board.py scan [root]                     one line per problem for the watchdog; no output = healthy
 
 root defaults to the main checkout, even when run from inside a worktree."""
-import datetime, fcntl, glob, json, os, re, subprocess, sys, urllib.request
+import datetime, fcntl, glob, hashlib, json, os, re, subprocess, sys, urllib.request
 
 STATUSES = ("draft", "ready", "building", "done")
 ROW = re.compile(r"^\|\s*(\d{3})\s*\|\s*(.*?)\s*\|\s*(\w+)\s*\|\s*(\w+)\s*\|\s*(.*?)\s*\|\s*$")
@@ -89,6 +89,9 @@ def set_status(root, target, status):
     line = f"**Status:** {status}"
     txt = re.sub(r"^\*\*Status:\*\*.*$", line, txt, count=1, flags=re.M) if re.search(r"^\*\*Status:\*\*", txt, re.M) else txt.replace("\n", "\n\n" + line + "\n", 1)
     open(rd, "w").write(txt)
+    ev = os.path.join(d, "evals.md")
+    if status == "ready" and os.path.exists(ev):   # fingerprint of what the user approved; check-evals --passed compares it
+        open(os.path.join(d, ".evals.sha256"), "w").write(hashlib.sha256(open(ev, "rb").read()).hexdigest() + "\n")
     if nnn and os.path.exists(board_path(root)):
         with open(board_path(root), "r+") as f:      # lock: several agents flip rows at once
             fcntl.flock(f, fcntl.LOCK_EX)
@@ -98,7 +101,7 @@ def set_status(root, target, status):
 
 
 def conf(root):
-    c = {"stale_min": "15", "slow_min": "60", "ignore": "", "app_url": ""}
+    c = {"stale_min": "15", "wait_min": "45", "slow_min": "60", "ignore": "", "app_url": ""}
     try:
         for ln in open(os.path.join(root, ".super-agents", "watchdog.conf")):
             if "=" in ln and not ln.lstrip().startswith("#"): k, v = ln.split("=", 1); c[k.strip()] = v.strip()
@@ -127,7 +130,8 @@ def scan(root):
         for j in js:
             who = j.get("agent") or "worker"
             if j["phase"] == "blocked": out.append(f"PROBLEM {r['id']} {who} reports blocked: {j.get('note', '')}")
-            elif j["phase"] != "done" and minutes_since(j["updated"]) > float(c["stale_min"]): out.append(f"PROBLEM {r['id']} {who} silent for {minutes_since(j['updated']):.0f} min in phase '{j['phase']}'")
+            # testing/reviewing: the worker is blocked on its own tester/reviewer and cannot heartbeat, so it gets wait_min
+            elif j["phase"] != "done" and minutes_since(j["updated"]) > float(c["wait_min" if j["phase"] in ("testing", "reviewing") else "stale_min"]): out.append(f"PROBLEM {r['id']} {who} silent for {minutes_since(j['updated']):.0f} min in phase '{j['phase']}'")
         if any(j["phase"] != "done" for j in js) and max(minutes_since(j["started"]) for j in js) > float(c["slow_min"]):
             out.append(f"PROBLEM {r['id']} slow: building for {max(minutes_since(j['started']) for j in js):.0f} min")
     out += [f"PROBLEM dependency cycle {x}" for x in cycles(rs)]

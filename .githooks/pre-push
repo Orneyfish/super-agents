@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Optional local gate: run the tests before every push. Enable once per clone: git config core.hooksPath .githooks
+# git exports GIT_* variables to hooks; unset them so the tests' throwaway repos never touch this one.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX
+exec bash "$(git rev-parse --show-toplevel)/tests/run.sh"

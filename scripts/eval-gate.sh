@@ -16,7 +16,7 @@ n=$(get gate_blocks); n=${n:-0}
 if [ "$n" -ge 3 ]; then
   jq -n '{systemMessage:"super-agents: eval gate released after 3 blocks; evals still unmet."}'; exit 0
 fi
-if grep -q '^gate_blocks:' "$st"; then sed -i "s/^gate_blocks:.*/gate_blocks: $((n+1))/" "$st"; else echo "gate_blocks: $((n+1))" >> "$st"; fi
+if grep -q '^gate_blocks:' "$st"; then sed "s/^gate_blocks:.*/gate_blocks: $((n+1))/" "$st" > "$st.tmp" && mv "$st.tmp" "$st"; else echo "gate_blocks: $((n+1))" >> "$st"; fi
 
 jq -n --arg r "$left problem(s) in $dir mean the feature is not done:
 $out

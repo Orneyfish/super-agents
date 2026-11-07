@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # SessionStart: put the working agreement in every session; nudge un-set-up git projects; resume an active loop.
+command -v jq >/dev/null || { echo "super-agents: jq is not installed, so its hooks (the done-gates) are switched off. Install jq to turn them on."; exit 0; }
 in=$(cat); cwd=$(jq -r '.cwd // empty' <<<"$in"); cd "${cwd:-.}" 2>/dev/null || exit 0
 
 ctx="The super-agents plugin is active for this user. Working agreement: a task counts as done only when proven with output run in this session (test results, screenshot, eval pass), not on the agent's own say-so. For non-trivial user-visible features in git projects the flow is /super-agents:write-eval, then /super-agents:review-loop; for several features at once, /super-agents:write-tickets, /super-agents:mark-ready, then the user runs the 'superagent' command in a terminal. Also available: :classify-risk, :first-time-user, :fix-bug, :setup-project."

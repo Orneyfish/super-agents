@@ -52,7 +52,7 @@ checkpoint: <git rev-parse HEAD>
 7. **Decide, in this order:**
    - **Done**: every eval passes and the reviewer's verdict is `clean` (nothing at or above the risk threshold).
    - **Stuck**: a finding of the same class and location is still open after two rounds of fixes. Stop and show the user the finding; the builder is not converging.
-   - **Cap**: N = 5. Stop and report what remains. (Anthropic's own loop caps at 3; ours is 5 because each round here builds, runs every eval, and then reviews.)
+   - **Cap**: N = 5. Stop and report what remains. (5, because each round builds, runs every eval, and then reviews.)
    - Otherwise start round N+1.
 
 Questions you cannot settle (ambiguous or conflicting requirements, the builder's Questions, an eval that contradicts the mockup): set `awaiting_user: true`, give a short progress report (round, evals P/T, open findings), ask, and set it back to `false` once answered. Product decisions are the user's.

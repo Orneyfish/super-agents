@@ -13,4 +13,6 @@ case "$b" in main|master|trunk|"")
 esac
 
 # Team tickets use Claude Code's experimental agent teams: enabled for this session only, never globally.
-CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 exec claude --agent super-agents:router --name router --permission-mode auto "$@"
+# Workers run unattended, so default to auto permission mode unless the caller passes their own --permission-mode.
+mode=(--permission-mode auto); case " $* " in *" --permission-mode"*) mode=();; esac
+CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 exec claude --agent super-agents:router --name router "${mode[@]}" "$@"
