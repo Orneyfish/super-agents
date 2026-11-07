@@ -7,7 +7,7 @@
   board.py root                            print the main checkout of the repo containing the current directory
 
 root defaults to the main checkout, even when run from inside a worktree."""
-import datetime, fcntl, glob, hashlib, json, os, re, subprocess, sys, urllib.request
+import datetime, fcntl, glob, hashlib, json, math, os, re, subprocess, sys, urllib.request
 
 STATUSES = ("draft", "ready", "building", "done")
 ROW = re.compile(r"^\|\s*(\d{3})\s*\|\s*(.*?)\s*\|\s*(\w+)\s*\|\s*(\w+)\s*\|\s*(.*?)\s*\|\s*$")
@@ -119,8 +119,11 @@ def conf(root):
 
 
 def limit(c, key):
-    try: return float(c[key])
-    except ValueError: return float(DEFAULTS[key])   # a typo in watchdog.conf must not stop the watchdog
+    try:
+        v = float(c[key])
+        if math.isfinite(v): return v
+    except ValueError: pass
+    return float(DEFAULTS[key])   # a typo (or nan/inf, which never compare true) in watchdog.conf must not silence the watchdog
 
 
 def minutes_since(iso):
@@ -129,15 +132,19 @@ def minutes_since(iso):
 
 
 def job_problems(r, js, c):
-    out = []
-    for j in js:
-        who = j.get("agent") or "worker"
-        if j["phase"] == "blocked": out.append(f"PROBLEM {r['id']} {who} reports blocked: {j.get('note', '')}")
-        # testing/reviewing: the worker is blocked on its own tester/reviewer and cannot heartbeat, so it gets wait_min
-        elif j["phase"] != "done" and minutes_since(j["updated"]) > limit(c, "wait_min" if j["phase"] in ("testing", "reviewing") else "stale_min"):
-            out.append(f"PROBLEM {r['id']} {who} silent for {minutes_since(j['updated']):.0f} min in phase '{j['phase']}'")
-    if any(j["phase"] != "done" for j in js) and max(minutes_since(j["started"]) for j in js) > limit(c, "slow_min"):
-        out.append(f"PROBLEM {r['id']} slow: building for {max(minutes_since(j['started']) for j in js):.0f} min")
+    out, started = [], []
+    for j in js:   # one bad status file must not hide the others
+        try:
+            who = j.get("agent") or "worker"
+            if j["phase"] == "blocked": out.append(f"PROBLEM {r['id']} {who} reports blocked: {j.get('note', '')}")
+            # testing/reviewing: the worker is blocked on its own tester/reviewer and cannot heartbeat, so it gets wait_min
+            elif j["phase"] != "done" and minutes_since(j["updated"]) > limit(c, "wait_min" if j["phase"] in ("testing", "reviewing") else "stale_min"):
+                out.append(f"PROBLEM {r['id']} {who} silent for {minutes_since(j['updated']):.0f} min in phase '{j['phase']}'")
+            started.append((j["phase"] != "done", minutes_since(j["started"])))
+        except (KeyError, ValueError, TypeError, AttributeError) as e:
+            out.append(f"PROBLEM {r['id']} status file unreadable: {e!r}")
+    if any(active for active, _ in started) and max(m for _, m in started) > limit(c, "slow_min"):
+        out.append(f"PROBLEM {r['id']} slow: building for {max(m for _, m in started):.0f} min")
     return out
 
 
@@ -145,17 +152,18 @@ def scan(root):
     c, rs, out = conf(root), rows(root), []
     skip = {x.strip() for x in c["ignore"].split(",") if x.strip()}
     files = glob.glob(os.path.join(root, ".claude", "worktrees", "*", ".job", "status*.json")) + glob.glob(os.path.join(root, ".job", "status-*.json"))
-    jobs = {}
+    jobs, bad = {}, []
     for f in files:
         try:
             j = json.load(open(f))
             jobs.setdefault(j.get("ticket"), []).append(j)
-        except Exception as e: out.append(f"PROBLEM {os.path.relpath(f, root)} unreadable: {e!r}")
-    for r in (r for r in rs if r["status"] == "building" and r["id"] not in skip):
+        except Exception as e: bad.append(f"PROBLEM {os.path.relpath(f, root)} unreadable: {e!r}")
+    building = [r for r in rs if r["status"] == "building" and r["id"] not in skip]
+    if building: out += bad   # a corrupt file names no ticket, so it only matters while something is building
+    for r in building:
         js = jobs.get(r["id"], [])
         if not js: out.append(f"PROBLEM {r['id']} is 'building' but has no status file: the worker never started or died"); continue
-        try: out += job_problems(r, js, c)
-        except (KeyError, ValueError, TypeError) as e: out.append(f"PROBLEM {r['id']} status file unreadable: {e!r}")
+        out += job_problems(r, js, c)
     out += [f"PROBLEM dependency cycle {x}" for x in cycles(rs)]
     if c["app_url"]:
         try: urllib.request.urlopen(c["app_url"], timeout=5)

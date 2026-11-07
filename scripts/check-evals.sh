@@ -44,6 +44,8 @@ if [ "$passed" = 1 ]; then
   main=$(cd "$d" && "$here/board.py" root 2>/dev/null)
   if [ -n "$main" ] && pre=$(git -C "$d" rev-parse --show-prefix 2>/dev/null); then
     [ -f "$main/${pre}.evals.sha256" ] && fp="$main/${pre}.evals.sha256"
+    # a worker's worktree (.claude/worktrees/*): only the user's copy counts, never a fingerprint the worker wrote itself
+    case "$(cd "$d" && pwd -P)" in "$(cd "$main" && pwd -P)"/.claude/worktrees/*) fp="$main/${pre}.evals.sha256";; esac
   fi
   if [ -f "$fp" ]; then
     got=$(python3 -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$ev")

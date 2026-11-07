@@ -83,6 +83,11 @@ printf '\n## E2E setup\nStart the browser first.\n' >> $F/evals.md; fp $F
 t eval-e2e-heading 0 $X/check-evals.sh $F;                         t eval-e2e-heading-passed 0 $X/check-evals.sh $F --passed
 sedi 's/^- check: c$//' $F/evals.md
 t eval-missing-line 1 $X/check-evals.sh $F;                        has eval-missing-line 'FAIL: E1 is missing its "check" line'
+# PR review: a worker's worktree lives in .claude/worktrees; a fingerprint the worker wrote there must not count when the user's checkout has none
+M3=$T/m3; mkfix $M3/specs/tickets/001-x; git -C $M3 init -q -b main; git -C $M3 add -A >/dev/null; git -C $M3 -c user.email=t@t -c user.name=t commit -qm base
+mkdir -p $M3/.claude; git -C $M3 worktree add -q $M3/.claude/worktrees/w -b w; WT=$M3/.claude/worktrees/w/specs/tickets/001-x
+fp $WT; t eval-worker-forged-fp 1 $X/check-evals.sh $WT --passed;   has eval-worker-forged-fp "no approval fingerprint"
+fp $M3/specs/tickets/001-x; t eval-worker-main-fp 0 $X/check-evals.sh $WT --passed
 
 # ---- eval-gate.sh (Stop hook of the review-loop)
 mkdir -p .super-agents; st=.super-agents/state.md; in="{\"cwd\":\"$T/repo\"}"
@@ -101,11 +106,18 @@ gs() { LAST=$(echo "{\"cwd\":\"$T/repo\",\"session_id\":\"$1\"}" | $X/eval-gate.
 state; gs A; has gate-session-claim '"decision": "block"'; grep -q '^session: A' $st && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL gate did not record the owning session"; }
 gs B; silent gate-other-session
 gs A; has gate-owner-still-gated '"decision": "block"'
+# PR review: two sessions stopping at the same moment still leave exactly one owner
+for i in 1 2 3 4 5; do state
+  echo "{\"cwd\":\"$T/repo\",\"session_id\":\"A\"}" | $X/eval-gate.sh > $T/ra.out & echo "{\"cwd\":\"$T/repo\",\"session_id\":\"B\"}" | $X/eval-gate.sh > $T/rb.out & wait
+  [ "$(cat $T/ra.out $T/rb.out | grep -c '"decision": "block"')" = 1 ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL gate race round $i: not exactly one session was gated"; }
+done
 sedi 's/| E2 | fail |/| E2 | pass |/' $D/results.md; rm -rf .super-agents
 
 # ---- job-status.sh + worker-gate.sh (SubagentStop)
 W=$T/wt; mkdir -p $W; cd $W || exit
 t job-init 0 $X/job-status.sh init 001 "$T/repo/$D" building; [ "$(jq -r .phase .job/status.json)" = building ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL job-init"; }
+# PR review: a worker restarted in an old worktree starts with a fresh block count
+echo 3 > .job/gate_blocks; $X/job-status.sh init 001 "$T/repo/$D" building; [ ! -f .job/gate_blocks ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL init kept the old gate_blocks"; }
 t job-update 0 $X/job-status.sh testing "note"; [ "$(jq -r '.phase+.note' .job/status.json)" = testingnote ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL job-update"; }
 t job-team-file 0 $X/job-status.sh --name 001-a init 001 "$T/repo/$D" building; [ -f .job/status-001-a.json ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL job-team-file"; }
 wg() { LAST=$(echo "{\"cwd\":\"$W\",\"agent_type\":\"$1\"}" | $X/worker-gate.sh); }
@@ -150,6 +162,16 @@ printf '{not json' > .job/status-001-a.json
 t scan-badjson 0 $X/board.py scan;                                has scan-badjson "status-001-a.json unreadable"
 jq -n --arg u "$(iso 40)" --arg s "$(iso 41)" '{ticket:"001",phase:"building",started:$s,updated:$u,note:"",agent:"a"}' > .job/status-001-a.json; printf 'stale_min=abc\n' > .super-agents/watchdog.conf
 t scan-bad-conf 0 $X/board.py scan;                               has scan-bad-conf "silent for"
+# PR review: nan/inf thresholds fall back to the defaults, one bad file does not hide its siblings, a finished ticket's stale file is not a problem
+printf 'stale_min=nan\nslow_min=inf\n' > .super-agents/watchdog.conf
+t scan-nonfinite 0 $X/board.py scan;                              has scan-nonfinite "silent for"
+: > .super-agents/watchdog.conf
+jq -n '{ticket:"001",phase:"building",agent:"a"}' > .job/status-001-a.json
+jq -n --arg u "$(iso 5)" --arg s "$(iso 6)" '{ticket:"001",phase:"blocked",started:$s,updated:$u,note:"db down",agent:"b"}' > .job/status-001-b.json
+t scan-malformed-sibling 0 $X/board.py scan;                      has scan-malformed-sibling "blocked: db down"; has scan-malformed-sibling-flag "unreadable"
+rm -f .job/status-001-b.json; printf 'ignore=001,003\n' > .super-agents/watchdog.conf; printf '{broken' > .job/status-001-a.json
+t scan-stale-unreadable 0 $X/board.py scan;                       silent scan-stale-unreadable
+: > .super-agents/watchdog.conf
 $X/board.py set 003 ready >/dev/null
 
 # L1: a bad interval_min falls back to 10 minutes (with a warning) instead of busy-looping or killing the watchdog
@@ -193,6 +215,11 @@ git switch -q -c feat/y; echo more > specs/tickets/003-profile/extra.md
 t launch-uncommitted-no 1 bash -c "echo n | PATH=$T/bin:\$PATH $X/superagent.sh"; has launch-uncommitted-no "uncommitted"
 t launch-uncommitted-yes 0 bash -c "echo y | PATH=$T/bin:\$PATH $X/superagent.sh"; has launch-uncommitted-yes "ARGS:"
 [ -z "$(git status --porcelain -- specs/tickets)" ] && git cat-file -e HEAD:specs/tickets/003-profile/extra.md && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL launch did not commit the tickets"; }
+# PR review: work the user staged for something else is not swept into the tickets commit
+echo mine > mine.txt; git add mine.txt; echo again >> specs/tickets/003-profile/extra.md
+t launch-staged 0 bash -c "echo y | PATH=$T/bin:\$PATH $X/superagent.sh"
+! git show --name-only --format= HEAD | grep -q mine.txt && git diff --cached --name-only | grep -q mine.txt && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL launch committed (or unstaged) the user's own staged file"; }
+git rm -q --cached mine.txt; rm mine.txt
 git switch -q main; git branch -q -D feat/y
 
 # ---- hooks
@@ -221,6 +248,14 @@ ftu super-agents:first-time-user "echo hi | cat f"; has hook-ftu-reason-names-ma
 ftb() { LAST=$(jq -nc --arg d "$T" --argjson i "$1" '{cwd:$d,agent_type:"super-agents:first-time-user",tool_name:"mcp__claude-in-chrome__navigate",tool_input:$i}' | $X/block-code-reads.sh); }
 ftb '{"url":"http://localhost:3000/"}'; silent hook-ftu-browser-allowed
 ftb '{"url":"file:///home/me/project/src/app.py"}'; has hook-ftu-browser-file-denied '"permissionDecision": "deny"'
+ftb '{"url":"FILE:///home/me/project/src/app.py"}'; has hook-ftu-browser-FILE-denied '"permissionDecision": "deny"'
+# PR review: a filter after a pipe that reads files, and a read hidden in shell expansion, are still denied; plain filters are fine
+for c in 'curl -s x | grep -f .secret' 'curl -s x | grep -rn foo .' 'curl -s x | sed -f edit.sed' 'echo "$(<src/app.py)"' 'curl FILE:///etc/passwd'; do
+  ftu super-agents:first-time-user "$c"; has "hook-ftu-denied: $c" '"permissionDecision": "deny"'
+done
+for c in 'curl -s x | grep -n ok' "curl -s x | sed 's/a/b/'" 'curl -s x | jq .items | head -3'; do
+  ftu super-agents:first-time-user "$c"; silent "hook-ftu-allowed: $c"
+done
 jq -e '.hooks.PreToolUse[0].matcher | test("mcp__claude-in-chrome__")' "$R/hooks/hooks.json" >/dev/null && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL hooks.json matcher does not cover the browser tools"; }
 LAST=$(echo "{\"cwd\":\"$T/np\"}" | $X/session-start.sh); has session-agreement "super-agents plugin is active"
 # L4: the active-loop note lists dir and round

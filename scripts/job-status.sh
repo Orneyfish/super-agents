@@ -13,4 +13,4 @@ else
   [ -f "$f" ] || { echo "run 'job-status.sh init <NNN> <dir> <phase>' first" >&2; exit 1; }
   jq --arg p "${1:?phase}" --arg note "${2:-}" --arg n "$now" '.phase=$p|.note=$note|.updated=$n' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
 fi
-if [ -z "$name" ] && [ "${1:-}" = building ]; then rm -f .job/gate_blocks; fi   # a new build round gets a fresh worker-gate block count
+if [ -z "$name" ] && { [ "${1:-}" = building ] || [ "${1:-}" = init ]; }; then rm -f .job/gate_blocks; fi   # a new build round (or a restarted worker) gets a fresh worker-gate block count
