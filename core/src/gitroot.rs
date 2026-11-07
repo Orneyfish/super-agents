@@ -12,9 +12,9 @@ use std::process::Command;
 /// The main checkout of the repository around the current directory, or the current directory outside git.
 pub fn main_checkout() -> PathBuf {
     let here = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    // no --path-format=absolute (git 2.31+): older git echoes it back as an unknown option and every line moves down
     let Some(out) = git(&[
         "rev-parse",
-        "--path-format=absolute",
         "--git-dir",
         "--git-common-dir",
         "--show-toplevel",
@@ -26,13 +26,17 @@ pub fn main_checkout() -> PathBuf {
     else {
         return here;
     };
-    if git_dir == common_dir {
+    // --git-dir and --git-common-dir may be relative to the current directory
+    let (git_dir, common) = (
+        normalize(&here.join(git_dir)),
+        normalize(&here.join(common_dir)),
+    );
+    if git_dir == common {
         return PathBuf::from(top);
     }
     // a linked worktree: ask the repository it belongs to
-    let common = Path::new(common_dir);
     match git(&[
-        &format!("--git-dir={common_dir}"),
+        &format!("--git-dir={}", common.display()),
         "config",
         "--get",
         "core.worktree",

@@ -122,3 +122,43 @@ pub fn sa_stdin(dir: &Path, args: &[&str], input: &str) -> Run {
         stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
     }
 }
+
+/// Like `sa`, with `first_on_path` ahead of the real PATH (to put a fake `git` or `curl` in front).
+pub fn sa_path(dir: &Path, args: &[&str], first_on_path: &Path) -> Run {
+    let path = format!(
+        "{}:{}",
+        first_on_path.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let out = Command::new(env!("CARGO_BIN_EXE_sa-core"))
+        .args(args)
+        .current_dir(dir)
+        .env("SA_CORE_NOW", NOW.to_string())
+        .env("PATH", path)
+        .output()
+        .expect("run sa-core");
+    Run {
+        code: out.status.code().unwrap_or(-1),
+        stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+    }
+}
+
+/// A directory holding a `git` that behaves like git before 2.31: it echoes `--path-format=...` back as an
+/// unknown option instead of acting on it, so every line `rev-parse` prints moves down by one.
+#[cfg(unix)]
+pub fn old_git() -> tempfile::TempDir {
+    use std::os::unix::fs::PermissionsExt;
+    let real = Command::new("sh")
+        .args(["-c", "command -v git"])
+        .output()
+        .expect("find git");
+    let real = String::from_utf8_lossy(&real.stdout).trim().to_string();
+    let d = tempfile::tempdir().unwrap();
+    let script = format!(
+        "#!/bin/bash\nargs=(); for a in \"$@\"; do case $a in --path-format=*) echo \"$a\";; *) args+=(\"$a\");; esac; done\nexec {real} \"${{args[@]}}\"\n"
+    );
+    fs::write(d.path().join("git"), script).unwrap();
+    fs::set_permissions(d.path().join("git"), fs::Permissions::from_mode(0o755)).unwrap();
+    d
+}

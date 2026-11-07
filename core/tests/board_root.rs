@@ -83,3 +83,28 @@ fn root_of_a_separate_git_dir_repository_is_its_checkout() {
     fs::create_dir_all(checkout.join("deep")).unwrap();
     assert_eq!(root_from(&checkout.join("deep")), real(&checkout));
 }
+
+// git before 2.31 (Debian 11 ships 2.30, Ubuntu 20.04 2.25) echoes `--path-format=absolute` back instead of
+// printing absolute paths, which shifted every line: the root came out empty, or as <repo>/.git/worktrees.
+#[cfg(unix)]
+#[test]
+fn root_is_right_with_a_git_older_than_2_31() {
+    let t = fixture();
+    let repo = t.path();
+    git(repo, &["init", "-q", "-b", "main"]);
+    git(repo, &["add", "."]);
+    git(repo, &["commit", "-qm", "tickets"]);
+    git(repo, &["worktree", "add", "-q", "wt", "-b", "w"]);
+    fs::create_dir_all(repo.join("sub/deep")).unwrap();
+    let old = old_git();
+    for from in [repo.to_path_buf(), repo.join("sub/deep"), repo.join("wt")] {
+        let r = sa_path(&from, &["board", "root"], old.path());
+        assert_eq!(r.code, 0, "{}", r.stderr);
+        assert_eq!(
+            fs::canonicalize(r.stdout.trim_end()).unwrap(),
+            real(repo),
+            "board root from {}",
+            from.display()
+        );
+    }
+}
