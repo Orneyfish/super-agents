@@ -298,7 +298,9 @@ t commit-tickets-yes 0 bash -c "echo y | $X/commit-tickets.sh"
 [ -z "$(git status --porcelain -- specs/tickets CLAUDE.md)" ] && git cat-file -e HEAD:specs/tickets/003-profile/late.md && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL commit-tickets did not commit the new ticket file"; }
 t commit-tickets-clean 0 $X/commit-tickets.sh; has commit-tickets-clean "nothing to commit"
 echo again >> specs/tickets/003-profile/late.md; t commit-tickets-yes-flag 0 $X/commit-tickets.sh -y; [ -z "$(git status --porcelain -- specs/tickets)" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL commit-tickets -y left changes"; }
-git switch -q main; echo more >> specs/tickets/003-profile/late.md; t commit-tickets-on-main 1 $X/commit-tickets.sh -y; has commit-tickets-on-main "integration branch"; git checkout -q -- specs/tickets; git switch -q feat/y
+git switch -q main; echo more >> specs/tickets/003-profile/late.md; t commit-tickets-on-main 1 $X/commit-tickets.sh -y; has commit-tickets-on-main "integration branch"; rm -f specs/tickets/003-profile/late.md; git switch -q feat/y
+# the tests above switch branches: they must end where the tests below expect to be, not fail quietly on a stray file
+[ "$(git branch --show-current)" = feat/y ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL the commit-tickets tests left the fixture repo on '$(git branch --show-current)', not feat/y"; }
 git switch -q main; git branch -q -D feat/y
 
 # ---- hooks
