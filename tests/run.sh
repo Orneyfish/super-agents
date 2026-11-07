@@ -286,6 +286,30 @@ done
 for c in 'curl -s x | grep -n ok' "curl -s x | sed 's/a/b/'" 'curl -s x | jq .items | head -3'; do
   ftu super-agents:first-time-user "$c"; silent "hook-ftu-allowed: $c"
 done
+# #6: a filter after a pipe that is given a file reads that file and ignores its stdin; only a slash used to give that away
+for c in 'curl -s localhost:3000/ | head main.py' 'curl -s localhost:3000/ | grep def app.py' 'curl -s localhost:3000/ | sed -n 1,40p app.py' 'curl -s localhost:3000/ | tail -n +1 server.js' './run.sh | head app.py' \
+         'curl -s x | wc -l main.py' 'curl -s x | sort main.py' 'curl -s x | cut -d, -f1 data.csv' 'curl -s x | jq .a data.json' 'curl -s x | uniq main.py' 'curl -s x | head -n 5 main.py' \
+         'curl -s x | grep ok < main.py' 'curl -s x | head < main.py' "curl -s x | sed 'r main.py'" "curl -s x | sed -n '1R main.py'" 'curl -s x | grep -e ok main.py' 'curl -s x | grep ok main.py app.py'; do
+  ftu super-agents:first-time-user "$c"; has "hook-ftu-denied: $c" '"permissionDecision": "deny"'
+done
+for c in 'curl -s localhost:3000/ | head -n 5' 'curl -s x | tail -n +2' "curl -s x | sed -n '1,40p'" 'curl -s x | cut -d, -f1' 'curl -s x | cut -d , -f 1' 'curl -s x | sort | uniq -c' 'curl -s x | sort -k 2 -n | head -3' 'curl -s x | wc -l' \
+         'curl -s x | grep -A 2 error' 'curl -s x | grep -nA 2 error' 'curl -s x | grep "two words"' "curl -s x | grep -o 'href=\"/a/b\"'" 'curl -s x | grep -e ok -e done' 'curl -s x | jq -r .items[0].name' 'curl -s x | tr a-z A-Z' './run.sh | head -20 | tail -n 5'; do
+  ftu super-agents:first-time-user "$c"; silent "hook-ftu-allowed: $c"
+done
+# #6: a | or ; inside quotes does not end the stage, so the file after it is still an operand
+for c in 'curl -s x | grep "a|b" main.py' "curl -s x | grep 'a|b' main.py" 'curl -s x | grep "a\" | b" main.py' 'curl -s x | sed "s/a;b/c/" main.py'; do
+  ftu super-agents:first-time-user "$c"; has "hook-ftu-denied: $c" '"permissionDecision": "deny"'
+done
+for c in 'curl -s x | grep "a|b"' 'curl -s x | grep -E "error|warn" | head -5' "curl -s x | sed 's/a;b/c/'"; do
+  ftu super-agents:first-time-user "$c"; silent "hook-ftu-allowed: $c"
+done
+# #6: sed can run or write through its s flags too; writing the filtered output to a file is not a read
+for c in "curl -s x | sed 's/.*/cat main.py/e'" "curl -s x | sed 's|.*|cat main.py|e'" "curl -s x | sed -n 's/a/b/w out.txt'" 'curl -s x | grep ">" main.py' 'curl -s x | head >(cat main.py)'; do
+  ftu super-agents:first-time-user "$c"; has "hook-ftu-denied: $c" '"permissionDecision": "deny"'
+done
+for c in 'curl -s x | head -5 > out.txt' 'curl -s x | head -5 >> out.txt' 'curl -s x | grep ok 2>/dev/null' 'curl -s x | grep ok >out.txt' 'curl -s x | grep ">"' "curl -s x | sed 's/a/b/g'" "curl -s x | sed 's/error/ok/i'"; do
+  ftu super-agents:first-time-user "$c"; silent "hook-ftu-allowed: $c"
+done
 python3 -c 'import json,sys;sys.exit("mcp__claude-in-chrome__" not in json.load(open(sys.argv[1]))["hooks"]["PreToolUse"][0]["matcher"])' "$R/hooks/hooks.json" && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL hooks.json matcher does not cover the browser tools"; }
 LAST=$(echo "{\"cwd\":\"$T/np\"}" | $X/session-start.sh); has session-agreement "super-agents plugin is active"
 # L4: the active-loop note lists dir and round
