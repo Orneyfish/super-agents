@@ -1,0 +1,23 @@
+[package]
+name = "sa-core"
+version = "0.2.0"
+edition = "2021"
+rust-version = "1.89"
+license = "MIT"
+publish = false
+description = "Native helper for the super-agents plugin: ticket board, watchdog scan, evals fingerprint"
+
+[dependencies]
+regex = "1"
+serde_json = "1"
+sha2 = "0.10"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

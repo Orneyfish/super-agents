@@ -4,3 +4,4 @@ __pycache__/
 .job/
 .claude/worktrees/
 evals/results/
+core/target/
