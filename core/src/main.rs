@@ -3,8 +3,9 @@
 //! codes, except where board.rs, scan.rs and hookio.rs say otherwise.
 
 mod board;
+mod gitroot;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 const USAGE: &str = "\
@@ -39,8 +40,28 @@ fn main() -> ExitCode {
             }
             Err(e) => fail(&format!("{file}: {e}")),
         },
+        ["board", "check", rest @ ..] if rest.len() <= 1 => {
+            let (report, ok) = board::check(&root(rest));
+            println!("{report}");
+            if ok {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
+        }
+        ["board", "root"] => {
+            println!("{}", gitroot::main_checkout().display());
+            ExitCode::SUCCESS
+        }
         _ => fail(USAGE),
     }
+}
+
+/// The optional trailing `[root]` argument, or the main checkout.
+fn root(rest: &[&str]) -> PathBuf {
+    rest.first()
+        .map(PathBuf::from)
+        .unwrap_or_else(gitroot::main_checkout)
 }
 
 fn fail(message: &str) -> ExitCode {
