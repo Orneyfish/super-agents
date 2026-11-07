@@ -4,6 +4,7 @@
   board.py check [root]                    lint the board against the ticket folders
   board.py set <NNN|feature-dir> <status> [root]   status: draft|ready|building|done (RD.md, plus the board row for a ticket)
   board.py scan [root]                     one line per problem for the watchdog; no output = healthy
+  board.py root                            print the main checkout of the repo containing the current directory
 
 root defaults to the main checkout, even when run from inside a worktree."""
 import datetime, fcntl, glob, hashlib, json, os, re, subprocess, sys, urllib.request
@@ -14,10 +15,14 @@ ROW = re.compile(r"^\|\s*(\d{3})\s*\|\s*(.*?)\s*\|\s*(\w+)\s*\|\s*(\w+)\s*\|\s*(
 
 def main_checkout():
     try:
-        common = subprocess.check_output(["git", "rev-parse", "--git-common-dir"], text=True, stderr=subprocess.DEVNULL).strip()
-        return os.path.dirname(os.path.realpath(common))
+        common = os.path.realpath(subprocess.check_output(["git", "rev-parse", "--git-common-dir"], text=True, stderr=subprocess.DEVNULL).strip())
     except Exception:
         return os.getcwd()
+    try:   # a submodule keeps its git dir in <superproject>/.git/modules and says where its files are in core.worktree
+        wt = subprocess.check_output(["git", "--git-dir=" + common, "config", "--get", "core.worktree"], text=True, stderr=subprocess.DEVNULL).strip()
+        return os.path.realpath(os.path.join(common, wt))
+    except Exception:
+        return os.path.dirname(common)
 
 
 def board_path(root): return os.path.join(root, "specs", "tickets", "BOARD.md")
@@ -100,8 +105,11 @@ def set_status(root, target, status):
     print(f"ok {target} -> {status}")
 
 
+DEFAULTS = {"stale_min": "15", "wait_min": "45", "slow_min": "60", "ignore": "", "app_url": ""}
+
+
 def conf(root):
-    c = {"stale_min": "15", "wait_min": "45", "slow_min": "60", "ignore": "", "app_url": ""}
+    c = dict(DEFAULTS)
     try:
         for ln in open(os.path.join(root, ".super-agents", "watchdog.conf")):
             if "=" in ln and not ln.lstrip().startswith("#"): k, v = ln.split("=", 1); c[k.strip()] = v.strip()
@@ -110,9 +118,27 @@ def conf(root):
     return c
 
 
+def limit(c, key):
+    try: return float(c[key])
+    except ValueError: return float(DEFAULTS[key])   # a typo in watchdog.conf must not stop the watchdog
+
+
 def minutes_since(iso):
     t = datetime.datetime.fromisoformat(iso.replace("Z", "+00:00"))
     return (datetime.datetime.now(datetime.timezone.utc) - t).total_seconds() / 60
+
+
+def job_problems(r, js, c):
+    out = []
+    for j in js:
+        who = j.get("agent") or "worker"
+        if j["phase"] == "blocked": out.append(f"PROBLEM {r['id']} {who} reports blocked: {j.get('note', '')}")
+        # testing/reviewing: the worker is blocked on its own tester/reviewer and cannot heartbeat, so it gets wait_min
+        elif j["phase"] != "done" and minutes_since(j["updated"]) > limit(c, "wait_min" if j["phase"] in ("testing", "reviewing") else "stale_min"):
+            out.append(f"PROBLEM {r['id']} {who} silent for {minutes_since(j['updated']):.0f} min in phase '{j['phase']}'")
+    if any(j["phase"] != "done" for j in js) and max(minutes_since(j["started"]) for j in js) > limit(c, "slow_min"):
+        out.append(f"PROBLEM {r['id']} slow: building for {max(minutes_since(j['started']) for j in js):.0f} min")
+    return out
 
 
 def scan(root):
@@ -121,19 +147,15 @@ def scan(root):
     files = glob.glob(os.path.join(root, ".claude", "worktrees", "*", ".job", "status*.json")) + glob.glob(os.path.join(root, ".job", "status-*.json"))
     jobs = {}
     for f in files:
-        try: j = json.load(open(f))
-        except Exception: continue
-        jobs.setdefault(j.get("ticket"), []).append(j)
+        try:
+            j = json.load(open(f))
+            jobs.setdefault(j.get("ticket"), []).append(j)
+        except Exception as e: out.append(f"PROBLEM {os.path.relpath(f, root)} unreadable: {e!r}")
     for r in (r for r in rs if r["status"] == "building" and r["id"] not in skip):
         js = jobs.get(r["id"], [])
         if not js: out.append(f"PROBLEM {r['id']} is 'building' but has no status file: the worker never started or died"); continue
-        for j in js:
-            who = j.get("agent") or "worker"
-            if j["phase"] == "blocked": out.append(f"PROBLEM {r['id']} {who} reports blocked: {j.get('note', '')}")
-            # testing/reviewing: the worker is blocked on its own tester/reviewer and cannot heartbeat, so it gets wait_min
-            elif j["phase"] != "done" and minutes_since(j["updated"]) > float(c["wait_min" if j["phase"] in ("testing", "reviewing") else "stale_min"]): out.append(f"PROBLEM {r['id']} {who} silent for {minutes_since(j['updated']):.0f} min in phase '{j['phase']}'")
-        if any(j["phase"] != "done" for j in js) and max(minutes_since(j["started"]) for j in js) > float(c["slow_min"]):
-            out.append(f"PROBLEM {r['id']} slow: building for {max(minutes_since(j['started']) for j in js):.0f} min")
+        try: out += job_problems(r, js, c)
+        except (KeyError, ValueError, TypeError) as e: out.append(f"PROBLEM {r['id']} status file unreadable: {e!r}")
     out += [f"PROBLEM dependency cycle {x}" for x in cycles(rs)]
     if c["app_url"]:
         try: urllib.request.urlopen(c["app_url"], timeout=5)
@@ -144,7 +166,8 @@ def scan(root):
 if __name__ == "__main__":
     a = sys.argv[1:]
     cmd = a[0] if a else ""
-    if cmd == "set" and len(a) >= 3: set_status(a[3] if len(a) > 3 else main_checkout(), a[1], a[2])
+    if cmd == "root": print(main_checkout())
+    elif cmd == "set" and len(a) >= 3: set_status(a[3] if len(a) > 3 else main_checkout(), a[1], a[2])
     elif cmd in ("check", "scan"):
         root = a[1] if len(a) > 1 else main_checkout()
         sys.exit(check(root)) if cmd == "check" else scan(root)

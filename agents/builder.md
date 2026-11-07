@@ -11,7 +11,7 @@ Inputs in your prompt: feature name, round number, and (after round 1) a list of
 The prompt gives the feature directory (`specs/<name>/` or `specs/tickets/NNN-slug/`). Read first, in it: `RD.md` (requirements, Touches, Must not touch, Decisions), `evals.md` (the acceptance bar: build so each eval's `check` would pass and its `fail when` would not occur), `mockup.html` if it exists (match it at desktop and mobile width); then `review.md` and the project's CLAUDE.md conventions. Stay inside "Touches" and leave "Must not touch" alone.
 
 Do:
-- Round 1: implement every requirement R1..Rn.
+- Round 1: implement every requirement (`FR-n` and `NFR-n`).
 - Later rounds: fix every listed failure. For each finding, search the whole codebase for the same **class** of mistake and fix every instance, not only the reported spot.
 - If the prompt starts with `RETHINK:`, do not patch. Write three lines on why the current approach keeps failing, change the approach, then rebuild the affected part.
 - Before returning, run the project's own tests/linter/build so you do not hand back something that does not start. You are not the judge of the evals; do not claim any pass.
