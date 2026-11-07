@@ -9,18 +9,19 @@ HOOKIO="$X/sa-native.sh hookio"     # the hook scripts' JSON helper under test
 # the native helper (core/) must be built for the board tests; cargo is a no-op when it is up to date
 if command -v cargo >/dev/null; then (cd "$R/core" && cargo build -q --release --locked) || exit 1; fi
 pass=0; fail=0; LAST=""
-# the plugin must not need jq: any script that calls it fails loudly against this shim
-mkdir -p "$T/nojq"; printf '#!/bin/sh\necho "jq was called, but the plugin must work without it" >&2\nexit 97\n' > "$T/nojq/jq"; chmod +x "$T/nojq/jq"; PATH="$T/nojq:$PATH"
+# the plugin must not need jq or python3: any script that calls one fails loudly against these shims
+mkdir -p "$T/nojq"; for c in jq python3; do printf '#!/bin/sh\necho "%s was called, but the plugin must work without it" >&2\nexit 97\n' $c > "$T/nojq/$c"; chmod +x "$T/nojq/$c"; done; PATH="$T/nojq:$PATH"
 jget() { $HOOKIO get "$1"; }                                   # value of a path in the JSON on stdin
-js() { python3 -c 'import json,sys;print(json.dumps(dict(a.split("=",1) for a in sys.argv[1:])))' "$@"; }   # js k=v ... : a flat JSON object of strings
+js() { local o="" kv; for kv; do o+="${o:+, }\"${kv%%=*}\": \"${kv#*=}\""; done; echo "{$o}"; }   # js k=v ... : a flat JSON object of strings (values without " or \)
 t()   { local n=$1 want=$2; shift 2; LAST=$("$@" 2>&1); local rc=$?; [ "$rc" = "$want" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL $n: exit $rc, wanted $want"; echo "$LAST" | head -4; }; }
 has() { grep -qF -- "$2" <<<"$LAST" && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL $1: output lacks '$2'"; echo "$LAST" | head -4; }; }
 hasnt() { grep -qF -- "$2" <<<"$LAST" && { fail=$((fail+1)); echo "FAIL $1: output has '$2'"; } || pass=$((pass+1)); }
 silent() { [ -z "$LAST" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL $1: expected no output, got: $LAST" | head -3; }; }
 # portable between GNU and BSD/macOS userlands: in-place sed, "N minutes ago" timestamp, backdated mtime
 sedi() { local f=${!#}; sed -i.bak "$@" && rm -f "$f.bak"; }
-iso() { python3 -c 'import datetime as d,sys;print((d.datetime.now(d.timezone.utc)-d.timedelta(minutes=float(sys.argv[1]))).strftime("%Y-%m-%dT%H:%M:%SZ"))' "$1"; }
-age() { python3 -c 'import os,sys,time;t=time.time()-float(sys.argv[2])*3600;os.utime(sys.argv[1],(t,t))' "$1" "$2"; }
+at()  { date -r "$1" "$2" 2>/dev/null || date -d "@$1" "$2"; }      # format epoch $1: BSD date, then GNU date
+iso() { TZ=UTC at $(( $(date +%s) - $1 * 60 )) +%Y-%m-%dT%H:%M:%SZ; }  # $1 whole minutes ago, UTC
+age() { touch -t "$(at $(( $(date +%s) - $2 * 3600 )) +%Y%m%d%H%M.%S)" "$1"; }   # mtime $2 whole hours ago
 
 # ---- hookio.py (the JSON glue that replaces jq)
 H=$HOOKIO; eq() { [ "$2" = "$3" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL $1: got '$2', wanted '$3'"; }; }
@@ -120,7 +121,7 @@ cp $T/rd.bak $D/RD.md; printf '\nUsers can add a `TODO` item.\n' >> $D/RD.md; t 
 cp $T/rd.bak $D/RD.md
 # H3: a ticket with no approval fingerprint anywhere cannot pass (a worker could have deleted or never had one)
 # L2: the tester prints PASS, the gate takes it in any case. L5: '## E2E ...' is not an eval, and an id never keeps its colon
-fp() { python3 -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$1/evals.md" > "$1/.evals.sha256"; }
+fp() { "$X/sa-native.sh" fingerprint "$1/evals.md" > "$1/.evals.sha256"; }
 mkfix() { mkdir -p $1/evidence; echo ok > $1/evidence/E1.txt
   printf '# t\n\n**Status:** building\n**Risk:** low\n\n## Functional requirements\n- FR-1: a\n\nUI: no\n' > $1/RD.md
   printf '# E\n\n## Setup\nx\n\n## E1: a\n- covers: FR-1\n- check: c\n- pass when: p\n- fail when: f\n' > $1/evals.md
@@ -301,7 +302,8 @@ git switch -q main; echo more >> specs/tickets/003-profile/late.md; t commit-tic
 git switch -q main; git branch -q -D feat/y
 
 # ---- hooks
-ftu() { LAST=$(python3 -c 'import json,sys;print(json.dumps({"cwd":sys.argv[3],"agent_type":sys.argv[1],"tool_name":"Bash","tool_input":{"command":sys.argv[2]}}))' "$1" "$2" "$T" | $X/block-code-reads.sh); }
+jstr() { local s=${1//\\/\\\\}; s=${s//\"/\\\"}; printf '"%s"' "${s//$'\n'/\\n}"; }   # $1 as a JSON string (the tests need no other escapes)
+ftu() { LAST=$(printf '{"cwd": %s, "agent_type": %s, "tool_name": "Bash", "tool_input": {"command": %s}}' "$(jstr "$T")" "$(jstr "$1")" "$(jstr "$2")" | $X/block-code-reads.sh); }
 ftu "" "cat src/app.py"; silent hook-main-agent-free
 ftu super-agents:builder "grep -r x ."; silent hook-other-agent-free
 ftu super-agents:first-time-user "cat src/app.py"; has hook-ftu-cat-denied '"permissionDecision": "deny"'
@@ -323,7 +325,7 @@ for c in 'curl -s localhost:3000/health | grep ok' 'curl -s localhost:3000/ | he
 done
 ftu super-agents:first-time-user "echo hi | cat f"; has hook-ftu-reason-names-match "'cat'"
 # L7: browser tools are checked too: the app's URLs are fine, file: URLs are not
-ftb() { LAST=$(python3 -c 'import json,sys;print(json.dumps({"cwd":sys.argv[2],"agent_type":"super-agents:first-time-user","tool_name":"mcp__claude-in-chrome__navigate","tool_input":json.loads(sys.argv[1])}))' "$1" "$T" | $X/block-code-reads.sh); }
+ftb() { LAST=$(printf '{"cwd": %s, "agent_type": "super-agents:first-time-user", "tool_name": "mcp__claude-in-chrome__navigate", "tool_input": %s}' "$(jstr "$T")" "$1" | $X/block-code-reads.sh); }
 ftb '{"url":"http://localhost:3000/"}'; silent hook-ftu-browser-allowed
 ftb '{"url":"file:///home/me/project/src/app.py"}'; has hook-ftu-browser-file-denied '"permissionDecision": "deny"'
 ftb '{"url":"FILE:///home/me/project/src/app.py"}'; has hook-ftu-browser-FILE-denied '"permissionDecision": "deny"'
@@ -365,7 +367,7 @@ done
 for c in 'echo done.' './launcher.sh add "a . b"' 'curl -d "x=$(date)" http://localhost:3000/' 'curl -s x > out.txt' './launcher.sh list | sort | wc -l' 'curl -s http://localhost:3000/ -d "<a>1</a>"'; do
   ftu super-agents:first-time-user "$c"; silent "hook-ftu-allowed: $c"
 done
-python3 -c 'import json,sys;sys.exit("mcp__claude-in-chrome__" not in json.load(open(sys.argv[1]))["hooks"]["PreToolUse"][0]["matcher"])' "$R/hooks/hooks.json" && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL hooks.json matcher does not cover the browser tools"; }
+$HOOKIO get hooks.PreToolUse < "$R/hooks/hooks.json" | grep -qE '"matcher":"[^"]*mcp__claude-in-chrome__' && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL hooks.json matcher does not cover the browser tools"; }
 LAST=$(echo "{\"cwd\":\"$T/np\"}" | $X/session-start.sh); has session-agreement "super-agents plugin is active"
 # L4: the active-loop note lists dir and round
 mkdir -p $T/p6/.super-agents; git -C $T/p6 init -q -b main; touch $T/p6/review.md; printf -- '---\ndir: specs/x\nactive: true\nround: 2\n---\n' > $T/p6/.super-agents/state.md
@@ -374,7 +376,7 @@ LAST=$(echo "{\"cwd\":\"$T/repo\"}" | $X/session-start.sh); has session-nudge "/
 # #5: the session id goes into the context, so the review-loop can record who started the loop
 LAST=$(echo "{\"cwd\":\"$T/repo\",\"session_id\":\"sessZ\"}" | $X/session-start.sh); has session-start-id "This session's id is sessZ"
 LAST=$(echo "{\"cwd\":\"$T/repo\"}" | $X/session-start.sh); hasnt session-start-no-id "session's id"
-t session-no-python 0 env PATH="$T/nopath" "$BASH" $X/session-start.sh;  has session-no-python "python3 is not installed"   # hooks need python3; say so instead of silently doing nothing
+t session-no-core 0 env SUPER_AGENTS_CORE="$T/nope" $X/session-start.sh;  has session-no-core "sa-core is not available"   # hooks need sa-core; say so instead of silently doing nothing
 
 
 # ---- AGENTS.md is refreshed when present, never created
@@ -427,7 +429,6 @@ ok() { pass=$((pass+1)); }; bad() { fail=$((fail+1)); echo "FAIL $*"; }
 for f in "$R"/agents/*.md "$R"/skills/*/SKILL.md; do
   grep -qE 'job-status\.sh|board\.py' "$f" && bad "$f names job-status.sh or board.py directly; use 'super-agents job-status' / 'super-agents board'" || ok
 done
-for py in "$X"/*.py; do python3 -B -c 'import ast,sys;ast.parse(open(sys.argv[1]).read())' "$py" && ok || bad "scripts/$(basename "$py") does not parse"; done
 # #7: only the job that publishes may write to the repository; the job that runs the tests gets a read-only token
 [ "$(grep -c 'contents: write' "$R/.github/workflows/release.yml")" = 1 ] && awk '/^  [a-z]+:$/{job=$1} /contents: write/{print job}' "$R/.github/workflows/release.yml" | grep -qx 'publish:' && ok || bad "release.yml: contents: write must appear once, in the publish job only"
 # #7: prompt changes with no behaviour to run: guard them against being undone (the router cannot commit tickets; the merger blocks only on a running team; the reviewer is given its base)
@@ -435,9 +436,10 @@ grep -q 'super-agents commit-tickets' "$R/agents/router.md" && ok || bad "router
 grep -q "building.*team" "$R/agents/merger.md" && grep -q 'stray files' "$R/agents/merger.md" && ok || bad "merger.md no longer tells a running team's files from stray files"
 grep -q '^base: ' "$R/skills/review-loop/SKILL.md" && grep -q '`base` and `checkpoint`' "$R/skills/review-loop/SKILL.md" && grep -q '`base` in round 1' "$R/agents/reviewer.md" && ok || bad "the review-loop no longer records base or passes base and checkpoint to the reviewer"
 t sa-commit-tickets-route 1 bash -c "cd $T && $SA commit-tickets"; has sa-commit-tickets-route "not inside a git repo"
-v1=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["version"])' "$R/.claude-plugin/plugin.json"); v2=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["plugins"][0]["version"])' "$R/.claude-plugin/marketplace.json")
+ver() { sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$1" | head -1; }   # the first "version" in a manifest
+v1=$(ver "$R/.claude-plugin/plugin.json"); v2=$(ver "$R/.claude-plugin/marketplace.json")
 [ -n "$v1" ] && [ "$v1" = "$v2" ] && ok || bad "manifest versions differ: plugin.json '$v1', marketplace.json '$v2'"
-for s in $(python3 -c 'import json,re,sys;print(*re.findall(r"/scripts/([A-Za-z0-9._-]+)", open(sys.argv[1]).read()))' "$R/hooks/hooks.json"); do
+for s in $(grep -oE '/scripts/[A-Za-z0-9._-]+' "$R/hooks/hooks.json" | sed 's#^/scripts/##'); do
   [ -x "$X/$s" ] && ok || bad "hooks.json runs scripts/$s, which is missing or not executable"
 done
 for f in "$R"/scripts/* "$R"/bin/*; do [ -x "$f" ] && ok || bad "$f is not executable"; done
@@ -462,6 +464,24 @@ t native-fetch 0 fake --version;                                                
 [ -x "$T/cache/super-agents/9.9.9/$asset" ] && ok || bad "native-fetch did not cache $asset"
 echo tampered >> $T/srv/$asset; rm -rf $T/cache
 t native-mismatch 3 fake --version;                                               has native-mismatch "checksum mismatch"; hasnt native-mismatch "fake core"
+# no Python left in the plugin: the board, the evals fingerprint and the hooks' JSON run on sa-core
+if grep -rnE 'board\.py|hookio\.py|python3([^?]|$)' "$R"/agents "$R"/skills "$R"/scripts "$R"/bin "$R"/hooks "$R"/.github "$R"/README.md; then
+  bad "the lines above still use Python; use 'super-agents board', 'sa-native.sh fingerprint' or 'sa-native.sh hookio'"
+else ok; fi
+# a hook never blocks because sa-core is missing: with nothing to download it exits 0, says so, and blocks or
+# denies nothing. The same inputs block or deny when sa-core is there (the second half).
+cp "$X"/*.sh $F/scripts/; mkdir -p $T/empty .super-agents; rm -rf $T/cache; state; sedi 's/| E2 | pass |/| E2 | fail |/' $D/results.md
+gate_in=("eval-gate" "{\"cwd\":\"$T/repo\",\"session_id\":\"S\"}" "worker-gate" "{\"cwd\":\"$W\",\"agent_type\":\"super-agents:worker\"}"
+  "block-code-reads" "{\"cwd\":\"$T\",\"agent_type\":\"super-agents:first-time-user\",\"tool_name\":\"Read\",\"tool_input\":{}}" "session-start" "{\"cwd\":\"$T/repo\"}")
+for i in 0 2 4 6; do h=${gate_in[$i]}; j=${gate_in[$((i+1))]}
+  LAST=$(XDG_CACHE_HOME=$T/cache SUPER_AGENTS_CORE_URL="file://$T/empty" "$F/scripts/$h.sh" <<<"$j" 2>&1); rc=$?
+  [ $rc = 0 ] && ok || bad "$h exited $rc without sa-core"; has "$h-no-core" "sa-core"
+  hasnt "$h-no-core" '"decision": "block"'; hasnt "$h-no-core" '"permissionDecision": "deny"'
+done
+LAST=$("$X/eval-gate.sh" <<<"${gate_in[1]}");        has eval-gate-with-core '"decision": "block"'
+LAST=$("$X/worker-gate.sh" <<<"${gate_in[3]}");      has worker-gate-with-core '"decision": "block"'
+LAST=$("$X/block-code-reads.sh" <<<"${gate_in[5]}"); has block-code-reads-with-core '"permissionDecision": "deny"'
+sedi 's/| E2 | fail |/| E2 | pass |/' $D/results.md; rm -rf .super-agents $W/.job/gate_blocks
 for c in "$R"/evals/*/; do n=$(basename "$c"); [ "$n" = results ] && continue   # a case without a grader fails to load in 'claude plugin eval'
   [ -f "$c/prompt.md" ] && [ -n "$(ls "$c"/graders/*.md 2>/dev/null)" ] && ok || bad "eval case $n needs prompt.md and at least one graders/*.md"
 done

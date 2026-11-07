@@ -7,7 +7,7 @@ A Claude Code plugin that makes agents prove their work before calling it done, 
 
 ## Install
 
-Needs `bash`, `git` and `python3` (Linux or macOS); no other tools. Without `python3` the hooks, including the done-gates, cannot run; each session then says so.
+Needs `bash`, `git` and `curl` (Linux or macOS). The ticket board and the hooks' JSON run on `sa-core`, a small native helper: the first time it is needed it is downloaded for your platform from this repo's GitHub release and checked against `dist/checksums/`. `super-agents install-core` does that up front; `cargo build --release --manifest-path core/Cargo.toml` builds it from source instead; `SUPER_AGENTS_CORE=<path>` uses a binary you provide, and `SUPER_AGENTS_CORE_URL=<base URL>` downloads from a mirror. Without `sa-core` the hooks, including the done-gates, are switched off and let everything through; each session then says so.
 
 **Claude Code** (everything works: skills, hooks, router and workers):
 
@@ -17,6 +17,7 @@ claude plugin marketplace add ~/Projects/super-agents     # a local path loads t
 claude plugin install super-agents@super-agents
 ln -s ~/Projects/super-agents/bin/super-agents      ~/.local/bin/super-agents
 ln -s ~/Projects/super-agents/scripts/superagent.sh ~/.local/bin/superagent
+super-agents install-core                                # downloads and verifies sa-core for this machine
 ```
 
 Install it one way only, or the hooks would run twice. Alternatives: `claude plugin marketplace add Orneyfish/super-agents` installs from GitHub (a private repo needs working git credentials), and `ln -s ~/Projects/super-agents ~/.claude/skills/super-agents` loads it as an unregistered `@skills-dir` plugin. Update after pulling changes: `claude plugin update super-agents@super-agents`, then `/reload-plugins`. Remove: `claude plugin uninstall super-agents@super-agents`.
@@ -25,6 +26,7 @@ Install it one way only, or the hooks would run twice. Alternatives: `claude plu
 
 ```bash
 ln -s ~/Projects/super-agents/bin/super-agents ~/.local/bin/super-agents
+super-agents install-core                                # downloads and verifies sa-core for this machine
 super-agents link-skills ~/.agents/skills     # the universal Agent Skills folder (Codex, Gemini CLI, OpenCode, Copilot, ...)
 super-agents link-skills ~/.hermes/skills     # Hermes Agent
 # or: npx skills add Orneyfish/super-agents    (copies only skills/, so you still need the super-agents command above)
@@ -103,7 +105,7 @@ Ticket `NNN` runs on port `3100+NNN` with test account `tNNN`; the main checkout
 ## Known limits
 
 - **Team tickets use Claude Code's experimental agent teams**, which `superagent` enables for its own session only. They only work in an interactive session, are not resumable, and teammates share the main checkout (hence the file-ownership contract).
-- The router restriction is its `tools` list, so it cannot start servers or run `board.py`; workers, the merger and the watchdog do that.
+- The router restriction is its `tools` list, so it cannot start servers or run `super-agents board`; workers, the merger and the watchdog do that.
 - `agent-browser` is not bundled. Install it for parallel browser checks: `npm install -g agent-browser && agent-browser install`. Without it the tester, checker and reproducer fall back to the Chrome tools, which are one shared browser.
 - The done-gates check that evidence files exist and are non-empty, not what they show. In a worker's worktree the `evals.md` fingerprint is checked against the copy in your main checkout. Nothing technical stops a worker from writing there (workers have Bash), so the router reads `evals.md` from the main checkout and the merger refuses a branch that changed the approved files. In the single-feature review-loop the builder shares your checkout, so there the fingerprint only catches accidental edits. The post-merge checker, which re-walks the merged feature in a browser, is the independent check.
 - **Parallel mode runs unattended** (`--permission-mode auto`) and the worker, merger, reproducer and teammates have Bash. "Never push", "never touch the main checkout" and "never edit `evals.md`" are prompt rules. On a real codebase run it in a container, a VM or a disposable clone.
@@ -113,9 +115,9 @@ Ticket `NNN` runs on port `3100+NNN` with test account `tNNN`; the main checkout
 
 ## Development
 
-`bash tests/run.sh` runs the script tests plus consistency checks (manifest versions, hook scripts exist and are executable, agent names match their files, every `super-agents:<name>` reference resolves). It needs `git` and `python3`, and fails if any script calls `jq`, and runs on Linux and macOS.
+`bash tests/run.sh` runs the script tests plus consistency checks (manifest versions, hook scripts exist and are executable, agent names match their files, every `super-agents:<name>` reference resolves). It needs `git` and a Rust toolchain (1.89 or newer; it builds `core/` first), fails if any script calls `jq` or Python, and runs on Linux and macOS. `cd core && cargo test` runs the Rust tests, on Windows too.
 
-- **CI** (`.github/workflows/ci.yml`): the tests on Linux and macOS, plus ShellCheck on Linux, for every push and pull request.
+- **CI** (`.github/workflows/ci.yml`): the tests on Linux and macOS, ShellCheck on Linux, and `cargo fmt`, `clippy` and `cargo test` for `core/` (the Rust tests also on Windows), for every push and pull request.
 - **Release** (`.github/workflows/release.yml`): push a tag `vX.Y.Z` that matches `.claude-plugin/plugin.json`; it re-runs ShellCheck and the tests, then creates the GitHub release.
 - **Local gate** (optional): `git config core.hooksPath .githooks` runs the tests before every `git push`.
 

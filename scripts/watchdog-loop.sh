@@ -2,9 +2,9 @@
 # Run by the watchdog's Monitor: every round print the board's problems, but only when they changed.
 # Interval comes from .super-agents/watchdog.conf (interval_min, default 10); re-read each round.
 here="$(cd "$(dirname "$0")" && pwd)"; last=""; warned=""
-root=$("$here/board.py" root)
+root=$("$here/sa-native.sh" board root)
 while true; do
-  out=$("$here/board.py" scan 2>&1)
+  out=$("$here/sa-native.sh" board scan 2>&1)
   [ -n "$out" ] && [ "$out" != "$last" ] && echo "$out"
   last="$out"
   mins=$(sed -n 's/^interval_min *= *//p' "$root/.super-agents/watchdog.conf" 2>/dev/null | head -1 | tr -d '[:space:]')

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # SubagentStop hook: a ticket worker may not finish until every eval passes in results.md (or it declared itself blocked).
 # Escape hatches: no job file, a blocked phase, and a 3-block cap, so it can never wedge a worker. A gate that cannot run says so.
-here="$(cd "$(dirname "$0")" && pwd)"; get() { "$here/hookio.py" get "$@"; }; emit() { "$here/hookio.py" emit "$@"; }
+here="$(cd "$(dirname "$0")" && pwd)"; get() { "$here/sa-native.sh" hookio get "$@"; }; emit() { "$here/sa-native.sh" hookio emit "$@"; }
 in=$(cat)
 grep -q worker <<<"$in" || exit 0                                       # cheap pre-filter
+"$here/sa-native.sh" --version >/dev/null 2>&1 || { echo '{"systemMessage": "super-agents: worker gate skipped (sa-core is not available here; run super-agents install-core); nothing checked that its evals pass."}'; exit 0; }
 [ "$(get agent_type <<<"$in")" = super-agents:worker ] || exit 0
 skip() { emit message "super-agents: worker gate skipped ($1); nothing checked that its evals pass."; exit 0; }
 cwd=$(get cwd <<<"$in"); st="$cwd/.job/status.json"; [ -f "$st" ] || skip "no $st"
