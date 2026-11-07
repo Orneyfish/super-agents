@@ -12,8 +12,8 @@ Ask one question about "$ARGUMENTS": **what happens to a customer if this breaks
 
 If the call is between two levels, take the higher. If you cannot tell what the change touches, read the spec or the diff first; do not guess from the name.
 
-Answer with exactly one line: `RISK: <level> - <the worst realistic customer impact>`.
+If the feature's `RD.md` exists, set its `**Risk:**` line to the level (add it under `**Status:**` if missing). Do this silently; with no `RD.md` there is nothing to do.
 
-If the feature's `RD.md` exists, set its `**Risk:**` line to the level (add it under `**Status:**` if missing).
+Your whole reply is this one line: `RISK: <level> - <the worst realistic customer impact>`.
 
 The level sets how hard everything downstream works: write-eval adds more adversarial evals as it rises, and the reviewer reports lower severities as it rises.

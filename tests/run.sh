@@ -190,4 +190,8 @@ for ref in $(grep -ohE 'super-agents:[a-z][a-z-]*' "$R"/agents/*.md "$R"/skills/
   [ -f "$R/agents/$r.md" ] || [ -d "$R/skills/$r" ] && ok || bad "'$ref' names no agent or skill (typo in an Agent(...) allowlist silently stops dispatch)"
 done
 
+for c in "$R"/evals/*/; do n=$(basename "$c"); [ "$n" = results ] && continue   # a case without a grader fails to load in 'claude plugin eval'
+  [ -f "$c/prompt.md" ] && [ -n "$(ls "$c"/graders/*.md 2>/dev/null)" ] && ok || bad "eval case $n needs prompt.md and at least one graders/*.md"
+done
+
 echo "$pass passed, $fail failed"; [ "$fail" = 0 ]

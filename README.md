@@ -118,4 +118,4 @@ Ticket `NNN` runs on port `3100+NNN` with test account `tNNN`; the main checkout
 - **Release** (`.github/workflows/release.yml`): push a tag `vX.Y.Z` that matches `.claude-plugin/plugin.json`; it re-runs ShellCheck and the tests, then creates the GitHub release.
 - **Local gate** (optional): `git config core.hooksPath .githooks` runs the tests before every `git push`.
 
-The agents and skills are prompts, so none of this tests them; that still takes a live run.
+The agents and skills are prompts, so the checks above cannot test them. `evals/` holds model-run cases for `classify-risk` (including whether it fires from a plain question) and `write-eval` (writes a draft spec and builds nothing). Run them by hand, not in CI, since they cost about $2 on your credential: `claude plugin eval . --allow-tools Write Edit --ablation none --no-publish --max-cost-usd 3`. They run without `Bash`, so they cannot exercise the skills' `super-agents` validation steps. The router, workers, merger and team mode have no automated test and still need a live run.
