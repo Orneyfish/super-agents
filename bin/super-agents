@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# super-agents <command> [args]: one entry point to the plugin's scripts, for every agent harness.
+# Claude Code puts this directory on the Bash tool's PATH while the plugin is enabled. Elsewhere:
+#   ln -s <repo>/bin/super-agents ~/.local/bin/super-agents
+root="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; cmd="${1:-}"; [ $# -gt 0 ] && shift
+case "$cmd" in
+  check-evals)   exec "$root/scripts/check-evals.sh" "$@";;
+  board)         exec "$root/scripts/board.py" "$@";;
+  job-status)    exec "$root/scripts/job-status.sh" "$@";;
+  setup)         exec "$root/scripts/init-project.sh" "$@";;
+  watchdog-loop) exec "$root/scripts/watchdog-loop.sh" "$@";;
+  launch)        exec "$root/scripts/superagent.sh" "$@";;
+  link-skills)   [ $# -gt 0 ] || { echo "usage: super-agents link-skills <skills-dir>...  e.g. ~/.agents/skills ~/.hermes/skills" >&2; exit 2; }
+                 for d in "$@"; do mkdir -p "$d" && for s in "$root"/skills/*/; do ln -sfn "${s%/}" "$d/$(basename "$s")" && echo "linked $d/$(basename "$s")"; done; done;;
+  template)      [[ ${1:-} =~ ^[A-Za-z0-9._-]+$ && $1 != *..* ]] || { echo "usage: super-agents template <RD.md|evals.md|review.md>" >&2; exit 2; }
+                 cat "$root/templates/$1";;
+  *) echo "usage: super-agents {check-evals|board|job-status|setup|watchdog-loop|launch|link-skills|template} ..." >&2; exit 2;;
+esac

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "super-agents",
+  "version": "0.2.0",
+  "description": "Verify-before-done workflow: evals, fresh-context build/verify/review loop, risk-scaled strictness, first-time-user testing, bug fixing via git.",
+  "author": {
+    "name": "orneyfish"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/Orneyfish/super-agents",
+  "repository": "https://github.com/Orneyfish/super-agents",
+  "keywords": [
+    "agents",
+    "evals",
+    "review",
+    "router",
+    "workers",
+    "git-worktree"
+  ]
+}
