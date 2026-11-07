@@ -2,6 +2,7 @@
 name: write-eval
 description: Turn a feature idea into a written requirements doc plus strict evals (and a mockup for UI features) that the user reviews BEFORE any code is built. Use when the user wants to add or change user-visible behaviour, or says "spec this", "write evals", "define done". Not for typo or one-line changes, and not for bug fixes (use fix-bug). For several features at once use write-tickets.
 argument-hint: <feature-name> [low|medium|high]
+allowed-tools: Bash(super-agents *)
 ---
 
 Evals are the fixed tests that decide whether work is done. Write them before building, make them strict enough that lazy work fails, and get the user to approve them. Do not write feature code in this skill.

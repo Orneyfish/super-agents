@@ -2,6 +2,7 @@
 name: write-tickets
 description: Turn a request or a PRD into one ticket per feature, each written down in full (requirements plus strict evals) so a worker can build it without asking anything, and a BOARD.md saying which tickets can run in parallel. Use when the user wants several features planned for parallel building, or says "write tickets", "break this PRD down". For a single feature use write-eval.
 argument-hint: <request, or path to a PRD>
+allowed-tools: Bash(super-agents *)
 ---
 
 A ticket is one feature written down so completely that an agent can build and check it without asking anyone. Workers never talk to the user, so everything that needs a human decision is settled here, before any work starts. Do not build anything in this skill.

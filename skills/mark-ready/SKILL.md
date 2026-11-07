@@ -3,6 +3,7 @@ name: mark-ready
 description: Mark reviewed tickets or features as ready to build. Runs only on the user's explicit say-so for named tickets, all draft tickets, or a feature directory.
 argument-hint: <NNN ...|all|feature-dir>
 disable-model-invocation: true
+allowed-tools: Bash(super-agents *)
 ---
 
 The user running this is the approval step: draft means "written, not yet approved", ready means "approved, may be built". For each target in "$ARGUMENTS" (a three-digit ticket number, `all` = every draft ticket on the board, or a feature directory like `specs/checkout`):

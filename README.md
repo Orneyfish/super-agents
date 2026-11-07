@@ -11,12 +11,13 @@ A Claude Code plugin that makes agents prove their work before calling it done, 
 
 ```bash
 git clone https://github.com/Orneyfish/super-agents ~/Projects/super-agents
-ln -s ~/Projects/super-agents ~/.claude/skills/super-agents        # loads as super-agents@skills-dir in every session
-# or as a marketplace plugin instead (do not do both, the hooks would run twice):
-#   /plugin marketplace add Orneyfish/super-agents   then   /plugin install super-agents@super-agents
-ln -s ~/Projects/super-agents/bin/super-agents  ~/.local/bin/super-agents
+claude plugin marketplace add ~/Projects/super-agents     # a local path loads the repo in place, so your edits stay live
+claude plugin install super-agents@super-agents
+ln -s ~/Projects/super-agents/bin/super-agents      ~/.local/bin/super-agents
 ln -s ~/Projects/super-agents/scripts/superagent.sh ~/.local/bin/superagent
 ```
+
+Install it one way only, or the hooks would run twice. Alternatives: `claude plugin marketplace add Orneyfish/super-agents` installs from GitHub (a private repo needs working git credentials), and `ln -s ~/Projects/super-agents ~/.claude/skills/super-agents` loads it as an unregistered `@skills-dir` plugin. Update after pulling changes: `claude plugin update super-agents@super-agents`, then `/reload-plugins`. Remove: `claude plugin uninstall super-agents@super-agents`.
 
 **Any other harness** (skills only, see the table): put the `super-agents` command on your PATH and link the skills into the folder your harness reads.
 
@@ -63,7 +64,7 @@ What degrades outside Claude Code: the hooks that stop an agent from saying "don
 
 | Agent | Role |
 |---|---|
-| `router` | The only agent you talk to. Opus, high effort, and **no write or shell tools**: it can only read, start agents and message them. Starts the watchdog first, dispatches runnable tickets, checks each result against the ticket's evals, queues merges, relays decisions to you. |
+| `router` | The only agent you talk to. Opus, high effort, and **no write or shell tools**: it can only read, start agents and message them. Shows you a run plan and asks before it starts any tickets (name tickets to skip the question, or say "keep going" to stop being asked as more unblock), starts the watchdog, dispatches, checks each result against the ticket's evals, queues merges, relays decisions to you. |
 | `worker` | One solo ticket in its own git worktree: builds, has the tester and reviewer check it, writes `results.md` + `evidence/`, commits on its branch. Sonnet. |
 | `teammate` | One member of an agent team on a `team` ticket. Works in the main checkout on files it owns, agreed first in `contract.md`; the last-named teammate integrates and tests. |
 | `merger` | Lands a solo branch, a team's work, or a fix branch on the current branch; lint + build; undoes on failure; marks the ticket done. One at a time. |

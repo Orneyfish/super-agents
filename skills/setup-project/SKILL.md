@@ -3,6 +3,7 @@ name: setup-project
 description: Set up the current project (or a list of project paths) for super-agents. Adds review.md, the git/branch policy and review.md import to CLAUDE.md, and ignores the loop's state dir. Run once per project.
 argument-hint: [project-path ...]
 disable-model-invocation: true
+allowed-tools: Bash(super-agents *)
 ---
 
 1. Run `super-agents setup $ARGUMENTS` (no arguments = the current project). It is idempotent, skips anything that is not a git repo, and prints what it wrote.

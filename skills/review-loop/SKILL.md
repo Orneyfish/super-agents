@@ -3,6 +3,7 @@ name: review-loop
 description: Build one approved feature or ticket to completion in this session with fresh-context builder, tester and reviewer subagents, looping until every eval passes and review finds nothing new. Run after write-eval (or write-tickets plus ready) has been approved. For many tickets in parallel use the superagent command instead.
 argument-hint: <feature-name | ticket-number>
 disable-model-invocation: true
+allowed-tools: Bash(super-agents *)
 ---
 
 You are the orchestrator for "$ARGUMENTS". You never write feature code, test, or review yourself. Each of those runs in a fresh subagent so none of them inherits your reasoning or each other's: `super-agents:builder`, `super-agents:tester`, `super-agents:reviewer`. Give them paths and findings, not your opinions.
