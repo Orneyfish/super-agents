@@ -2,8 +2,9 @@
 #![allow(dead_code)]
 
 use std::fs;
+use std::io::Write;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 /// 2026-11-07T10:15:00Z: the clock every test run sees (SA_CORE_NOW).
 pub const NOW: u64 = 1_794_046_500;
@@ -98,4 +99,26 @@ pub fn git(dir: &Path, args: &[&str]) {
         dir.display(),
         String::from_utf8_lossy(&out.stderr)
     );
+}
+
+/// Like `sa`, with `input` on stdin.
+pub fn sa_stdin(dir: &Path, args: &[&str], input: &str) -> Run {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_sa-core"))
+        .args(args)
+        .current_dir(dir)
+        .env("SA_CORE_NOW", NOW.to_string())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("run sa-core");
+    let mut stdin = child.stdin.take().expect("stdin is piped");
+    stdin.write_all(input.as_bytes()).expect("write stdin");
+    drop(stdin);
+    let out = child.wait_with_output().expect("wait for sa-core");
+    Run {
+        code: out.status.code().unwrap_or(-1),
+        stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+    }
 }

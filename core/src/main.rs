@@ -4,10 +4,12 @@
 
 mod board;
 mod gitroot;
+mod hookio;
 mod http;
 mod isotime;
 mod scan;
 
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -72,6 +74,24 @@ fn main() -> ExitCode {
             println!("{}", gitroot::main_checkout().display());
             ExitCode::SUCCESS
         }
+        ["hookio", "get", path] => {
+            let mut input = Vec::new();
+            let read = io::stdin().read_to_end(&mut input);
+            reply(
+                read.map_err(|e| e.to_string())
+                    .and_then(|_| hookio::get(path, &input)),
+            )
+        }
+        ["hookio", "emit", kind, text] => match hookio::emit(kind, text) {
+            Some(json) => reply(Ok(json)),
+            None => fail(USAGE),
+        },
+        ["hookio", "status-init", ticket, dir, phase, now, agent] => {
+            reply(Ok(hookio::status_init(ticket, dir, phase, now, agent)))
+        }
+        ["hookio", "status-set", file, phase, note, now] => {
+            reply(hookio::status_set(Path::new(file), phase, note, now))
+        }
         _ => fail(USAGE),
     }
 }
@@ -81,6 +101,17 @@ fn root(rest: &[&str]) -> PathBuf {
     rest.first()
         .map(PathBuf::from)
         .unwrap_or_else(gitroot::main_checkout)
+}
+
+/// A hookio result and a newline, as hookio.py's print wrote it; or `hookio: <error>` and exit 1.
+fn reply(result: Result<String, String>) -> ExitCode {
+    match result {
+        Ok(out) => {
+            println!("{out}");
+            ExitCode::SUCCESS
+        }
+        Err(e) => fail(&format!("hookio: {e}")),
+    }
 }
 
 fn fail(message: &str) -> ExitCode {

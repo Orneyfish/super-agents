@@ -9,7 +9,7 @@ description = "Native helper for the super-agents plugin: ticket board, watchdog
 
 [dependencies]
 regex = "1"
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
 
 [dev-dependencies]
