@@ -5,10 +5,11 @@
 //! that is not a finite number falls back to its default. Heartbeat files are read in sorted order
 //! (deviation D1), and the reason after "unreadable:" is sa-core's own wording (D2).
 
-use crate::{board, isotime};
+use crate::{board, http, isotime};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 /// One heartbeat file. A field that cannot be used keeps the reason as its error.
 struct Job {
@@ -83,6 +84,11 @@ pub fn scan(root: &Path) -> Vec<String> {
             .into_iter()
             .map(|c| format!("PROBLEM dependency cycle {c}")),
     );
+    if let Some(url) = conf.get("app_url").filter(|u| !u.is_empty()) {
+        if let Err(e) = http::probe(url, Duration::from_secs(5)) {
+            out.push(format!("PROBLEM main app not answering at {url}: {e}"));
+        }
+    }
     out
 }
 

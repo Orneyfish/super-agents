@@ -4,6 +4,7 @@
 
 mod board;
 mod gitroot;
+mod http;
 mod isotime;
 mod scan;
 

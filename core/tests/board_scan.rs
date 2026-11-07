@@ -257,3 +257,84 @@ fn a_limit_that_is_not_a_finite_number_falls_back_to_its_default() {
         "PROBLEM 001 a silent for 2 min in phase 'building'\n"
     );
 }
+
+use std::io::{Read, Write};
+use std::net::TcpListener;
+
+/// Serves one HTTP reply with `status` on a free local port; returns its URL.
+fn one_reply(status: &'static str) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!(
+        "http://127.0.0.1:{}/",
+        listener.local_addr().unwrap().port()
+    );
+    std::thread::spawn(move || {
+        if let Ok((mut c, _)) = listener.accept() {
+            let mut buf = [0u8; 1024];
+            let _ = c.read(&mut buf);
+            let _ =
+                c.write_all(format!("HTTP/1.0 {status}\r\nContent-Length: 0\r\n\r\n").as_bytes());
+        }
+    });
+    url
+}
+
+#[test]
+fn the_app_url_is_probed() {
+    let t = fixture();
+    let root = t.path();
+    conf(root, &format!("app_url={}\n", one_reply("200 OK")));
+    assert_eq!(scan(root).stdout, "");
+    let url = one_reply("500 Internal Server Error");
+    conf(root, &format!("app_url={url}\n"));
+    assert_eq!(
+        scan(root).stdout,
+        format!("PROBLEM main app not answering at {url}: HTTP Error 500\n")
+    );
+    let closed = {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        format!("http://127.0.0.1:{}/", l.local_addr().unwrap().port())
+    };
+    conf(root, &format!("app_url={closed}\n"));
+    assert!(scan(root)
+        .stdout
+        .starts_with(&format!("PROBLEM main app not answering at {closed}: ")));
+    conf(root, "app_url=https://example.com/\n");
+    assert_eq!(
+        scan(root).stdout,
+        "PROBLEM main app not answering at https://example.com/: only http:// URLs are supported\n"
+    );
+}
+
+// `write!` on a TcpStream makes one write per format piece, so a server that answers on its first
+// read could see "GET " alone, reply and close, and the probe then failed with "Broken pipe".
+#[test]
+fn the_probe_sends_its_whole_request_in_one_write() {
+    let t = fixture();
+    let root = t.path();
+    for _ in 0..100 {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!(
+            "http://127.0.0.1:{}/",
+            listener.local_addr().unwrap().port()
+        );
+        let server = std::thread::spawn(move || {
+            let (mut c, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 1024];
+            let n = c.read(&mut buf).unwrap();
+            let _ = c.write_all(b"HTTP/1.0 200 OK\r\nContent-Length: 0\r\n\r\n");
+            String::from_utf8_lossy(&buf[..n]).into_owned()
+        });
+        conf(root, &format!("app_url={url}\n"));
+        let out = scan(root).stdout;
+        let first_read = server.join().unwrap();
+        assert!(
+            first_read.ends_with("\r\n\r\n"),
+            "the server's first read was only {first_read:?}"
+        );
+        assert_eq!(
+            out, "",
+            "the app answered 200 but the probe reported: {out}"
+        );
+    }
+}
