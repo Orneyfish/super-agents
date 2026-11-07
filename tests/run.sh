@@ -132,6 +132,15 @@ for i in 1 2 3 4 5; do state
   echo "{\"cwd\":\"$T/repo\",\"session_id\":\"A\"}" | $X/eval-gate.sh > $T/ra.out & echo "{\"cwd\":\"$T/repo\",\"session_id\":\"B\"}" | $X/eval-gate.sh > $T/rb.out & wait
   [ "$(cat $T/ra.out $T/rb.out | grep -c '"decision": "block"')" = 1 ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL gate race round $i: not exactly one session was gated"; }
 done
+# #5: a state file whose last line has no newline must not swallow the claim ("---session: A")
+printf -- "---\ndir: %s\nactive: true\nawaiting_user: false\ngate_blocks: 0\n---" "$D" > $st
+gs A; has gate-claim-no-newline '"decision": "block"'
+grep -q '^session: A$' $st && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL gate-claim-no-newline: the claim is not on its own line: $(tail -c 40 $st)"; }
+gs B; silent gate-claim-no-newline-other
+# #5: a loop that recorded its owner when it started is gated only for that owner, whichever session stops first
+printf -- "---\ndir: %s\nactive: true\nawaiting_user: false\ngate_blocks: 0\nsession: A\n---\n" "$D" > $st
+gs B; silent gate-recorded-owner-other-first
+gs A; has gate-recorded-owner-gated '"decision": "block"'
 sedi 's/| E2 | fail |/| E2 | pass |/' $D/results.md; rm -rf .super-agents
 
 # ---- job-status.sh + worker-gate.sh (SubagentStop)
@@ -283,6 +292,9 @@ LAST=$(echo "{\"cwd\":\"$T/np\"}" | $X/session-start.sh); has session-agreement 
 mkdir -p $T/p6/.super-agents; git -C $T/p6 init -q -b main; touch $T/p6/review.md; printf -- '---\ndir: specs/x\nactive: true\nround: 2\n---\n' > $T/p6/.super-agents/state.md
 LAST=$(echo "{\"cwd\":\"$T/p6\"}" | $X/session-start.sh); has session-active-loop "dir specs/x round 2"
 LAST=$(echo "{\"cwd\":\"$T/repo\"}" | $X/session-start.sh); has session-nudge "/super-agents:setup-project"
+# #5: the session id goes into the context, so the review-loop can record who started the loop
+LAST=$(echo "{\"cwd\":\"$T/repo\",\"session_id\":\"sessZ\"}" | $X/session-start.sh); has session-start-id "This session's id is sessZ"
+LAST=$(echo "{\"cwd\":\"$T/repo\"}" | $X/session-start.sh); hasnt session-start-no-id "session's id"
 t session-no-python 0 env PATH="$T/nopath" "$BASH" $X/session-start.sh;  has session-no-python "python3 is not installed"   # hooks need python3; say so instead of silently doing nothing
 
 

@@ -22,6 +22,7 @@ Create `.super-agents/state.md` (a Stop hook reads it and refuses "done" while e
 ```
 ---
 dir: <dir>
+session: <this session's id, from "This session's id is ..." in your session context; leave the line out if you were not given one>
 active: true
 awaiting_user: false
 risk: <risk>
