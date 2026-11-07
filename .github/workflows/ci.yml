@@ -14,11 +14,27 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: ShellCheck
         if: runner.os == 'Linux'
         run: shellcheck -x -S warning bin/super-agents scripts/*.sh tests/run.sh .githooks/pre-push
+      - name: Rust checks
+        working-directory: core
+        run: |
+          rustup component add rustfmt clippy
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
       - name: Tests
         run: bash tests/run.sh
+
+  core-windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Rust tests
+        working-directory: core
+        run: cargo test --locked

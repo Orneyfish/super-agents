@@ -4,8 +4,10 @@
 # Usage: tests/run.sh      Exit 0 = all passed.
 set -u
 R="$(cd "$(dirname "$0")/.." && pwd)"; X="$R/scripts"; T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
-BOARD="$X/board.py"     # the board command under test
-HOOKIO="$X/hookio.py"   # the hook scripts' JSON helper under test
+BOARD="$R/bin/super-agents board"   # the board command under test
+HOOKIO="$X/sa-native.sh hookio"     # the hook scripts' JSON helper under test
+# the native helper (core/) must be built for the board tests; cargo is a no-op when it is up to date
+if command -v cargo >/dev/null; then (cd "$R/core" && cargo build -q --release --locked) || exit 1; fi
 pass=0; fail=0; LAST=""
 # the plugin must not need jq: any script that calls it fails loudly against this shim
 mkdir -p "$T/nojq"; printf '#!/bin/sh\necho "jq was called, but the plugin must work without it" >&2\nexit 97\n' > "$T/nojq/jq"; chmod +x "$T/nojq/jq"; PATH="$T/nojq:$PATH"
@@ -446,6 +448,20 @@ for ref in $(grep -ohE 'super-agents:[a-z][a-z-]*' "$R"/agents/*.md "$R"/skills/
   [ -f "$R/agents/$r.md" ] || [ -d "$R/skills/$r" ] && ok || bad "'$ref' names no agent or skill (typo in an Agent(...) allowlist silently stops dispatch)"
 done
 
+# ---- sa-native.sh: finds, fetches and verifies the native helper; never runs an unverified download
+t native-override 0 env SUPER_AGENTS_CORE=/bin/echo "$X/sa-native.sh" hello;    has native-override "hello"
+t sa-install-core 0 $SA install-core;                                             has sa-install-core "sa-core is installed"
+F=$T/fake; mkdir -p $F/scripts $F/.claude-plugin $F/dist/checksums $T/srv
+cp "$X/sa-native.sh" $F/scripts/; printf '{\n  "version": "9.9.9"\n}\n' > $F/.claude-plugin/plugin.json
+fake() { XDG_CACHE_HOME=$T/cache SUPER_AGENTS_CORE_URL=file://$T/srv $F/scripts/sa-native.sh "$@"; }
+t native-no-checksum 3 fake --version;                                            has native-no-checksum "no checksum for sa-core-"
+asset=$(sed -n 's/.*no checksum for \([^ ]*\) in.*/\1/p' <<<"$LAST")
+printf '#!/bin/sh\necho "fake core $*"\n' > $T/srv/$asset
+( cd $T/srv && { sha256sum "$asset" 2>/dev/null || shasum -a 256 "$asset"; } ) > $F/dist/checksums/v9.9.9.txt
+t native-fetch 0 fake --version;                                                  has native-fetch "fake core --version"
+[ -x "$T/cache/super-agents/9.9.9/$asset" ] && ok || bad "native-fetch did not cache $asset"
+echo tampered >> $T/srv/$asset; rm -rf $T/cache
+t native-mismatch 3 fake --version;                                               has native-mismatch "checksum mismatch"; hasnt native-mismatch "fake core"
 for c in "$R"/evals/*/; do n=$(basename "$c"); [ "$n" = results ] && continue   # a case without a grader fails to load in 'claude plugin eval'
   [ -f "$c/prompt.md" ] && [ -n "$(ls "$c"/graders/*.md 2>/dev/null)" ] && ok || bad "eval case $n needs prompt.md and at least one graders/*.md"
 done

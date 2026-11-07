@@ -5,7 +5,9 @@
 root="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; cmd="${1:-}"; [ $# -gt 0 ] && shift
 case "$cmd" in
   check-evals)   exec "$root/scripts/check-evals.sh" "$@";;
-  board)         exec "$root/scripts/board.py" "$@";;
+  board)         exec "$root/scripts/sa-native.sh" board "$@";;
+  fingerprint)   exec "$root/scripts/sa-native.sh" fingerprint "$@";;
+  install-core)  "$root/scripts/sa-native.sh" --version || exit 3; echo "sa-core is installed for this machine";;
   job-status)    exec "$root/scripts/job-status.sh" "$@";;
   setup)         exec "$root/scripts/init-project.sh" "$@";;
   commit-tickets) exec "$root/scripts/commit-tickets.sh" "$@";;
@@ -18,5 +20,5 @@ case "$cmd" in
                    ln -sfn "${s%/}" "$t" && echo "linked $t"; done; done;;
   template)      [[ ${1:-} =~ ^[A-Za-z0-9._-]+$ && $1 != *..* ]] || { echo "usage: super-agents template <RD.md|evals.md|review.md>" >&2; exit 2; }
                  cat "$root/templates/$1";;
-  *) echo "usage: super-agents {check-evals|board|job-status|setup|commit-tickets|watchdog-loop|launch|link-skills|template} ..." >&2; exit 2;;
+  *) echo "usage: super-agents {check-evals|board|fingerprint|install-core|job-status|setup|commit-tickets|watchdog-loop|launch|link-skills|template} ..." >&2; exit 2;;
 esac
