@@ -56,6 +56,12 @@ echo ok > $D/evidence/gone.png; t eval-passed-again 0 $X/check-evals.sh $D --pas
 cp $D/evals.md $T/evals.bak; printf '\n<!-- loosened -->\n' >> $D/evals.md
 t eval-tampered 1 $X/check-evals.sh $D --passed;                   has eval-tampered "changed after the user approved"
 cp $T/evals.bak $D/evals.md; t eval-untampered 0 $X/check-evals.sh $D --passed
+# a worker's worktree copy: even with its own fingerprint file deleted, the main checkout's copy still catches the change
+git worktree add -q $T/wt2 -b w2 >/dev/null 2>&1; mkdir -p $T/wt2/$D; cp -R $D/. $T/wt2/$D/; rm -f $T/wt2/$D/.evals.sha256
+t eval-worktree-clean 0 $X/check-evals.sh $T/wt2/$D --passed
+printf '\n<!-- loosened -->\n' >> $T/wt2/$D/evals.md
+t eval-worktree-tampered 1 $X/check-evals.sh $T/wt2/$D --passed;   has eval-worktree-tampered "changed after the user approved"
+git worktree remove --force $T/wt2
 cp $D/evals.md $T/evals.bak; sedi 's/covers: NFR-1/covers: FR-1/' $D/evals.md; t eval-uncovered 1 $X/check-evals.sh $D; has eval-uncovered "NFR-1 has no eval"; cp $T/evals.bak $D/evals.md
 # FR-1 must not count as covered just because an eval covers NFR-1 or FR-10
 cp $D/evals.md $T/evals.bak; sedi 's/covers: FR-1$/covers: NFR-1, FR-10/' $D/evals.md; t eval-uncovered-lookalike 1 $X/check-evals.sh $D; has eval-uncovered-lookalike "FR-1 has no eval"; cp $T/evals.bak $D/evals.md
@@ -137,6 +143,13 @@ ftu "" "cat src/app.py"; silent hook-main-agent-free
 ftu super-agents:builder "grep -r x ."; silent hook-other-agent-free
 ftu super-agents:first-time-user "cat src/app.py"; has hook-ftu-cat-denied '"permissionDecision": "deny"'
 ftu super-agents:first-time-user "curl -s http://localhost:3000/"; silent hook-ftu-curl-allowed
+# a verb only counts where a command starts: words inside arguments are the user's own data, not a peek at the code
+for c in 'curl -s -d "q=find a flight" http://localhost:3000/search' 'curl -s http://localhost:3000/ls' './launcher.sh add "cat food"' 'bash ./launcher.sh list'; do
+  ftu super-agents:first-time-user "$c"; silent "hook-ftu-allowed: $c"
+done
+for c in 'echo hi | cat f' 'cd /tmp && cat f' 'FOO=1 cat f' '/usr/bin/cat f' 'xargs cat < list' 'env cat f' 'time cat f' 'echo $(cat f)' 'if true; then cat f; fi' 'bash -c "cat f"' 'curl file:///etc/passwd'; do
+  ftu super-agents:first-time-user "$c"; has "hook-ftu-denied: $c" '"permissionDecision": "deny"'
+done
 LAST=$(echo "{\"cwd\":\"$T/np\"}" | $X/session-start.sh); has session-agreement "super-agents plugin is active"
 LAST=$(echo "{\"cwd\":\"$T/repo\"}" | $X/session-start.sh); has session-nudge "/super-agents:setup-project"
 t session-no-jq 0 env PATH="$T/nopath" "$BASH" $X/session-start.sh;  has session-no-jq "jq is not installed"   # hooks need jq; say so instead of silently doing nothing

@@ -105,8 +105,8 @@ Ticket `NNN` runs on port `3100+NNN` with test account `tNNN`; the main checkout
 - **Team tickets use Claude Code's experimental agent teams**, which `superagent` enables for its own session only. They only work in an interactive session, are not resumable, and teammates share the main checkout (hence the file-ownership contract).
 - The router restriction is its `tools` list, so it cannot start servers or run `board.py`; workers, the merger and the watchdog do that.
 - `agent-browser` is not bundled. Install it for parallel browser checks: `npm install -g agent-browser && agent-browser install`. Without it the tester, checker and reproducer fall back to the Chrome tools, which are one shared browser.
-- The done-gates check that evidence files exist and are non-empty, not what they show, and a worker could still delete `.evals.sha256`. The post-merge checker, which re-walks the merged feature in a browser, is the independent check.
-- The first-time-user Bash block is a regex denylist, not a sandbox: it can deny harmless commands that merely contain a word like `cat` or `find` (even inside a quoted argument), and it can be bypassed.
+- The done-gates check that evidence files exist and are non-empty, not what they show. In a worker's worktree the `evals.md` fingerprint is checked against the copy in your main checkout, which the worker cannot change; in the single-feature review-loop the builder shares your checkout, so there it only catches accidental edits. The post-merge checker, which re-walks the merged feature in a browser, is the independent check.
+- The first-time-user Bash block is a regex denylist, not a sandbox: it blocks file-reading commands and shell wrappers where a command starts (words inside arguments are fine), but a determined agent can bypass it, for example by splitting a word with quotes.
 - Plugin subagents cannot carry their own hooks, so the worker and first-time-user gates are plugin-level hooks keyed on `agent_type`.
 - Parallel agents and router sessions are expensive. Use tickets for work that is worth it, and `classify-risk` to decide how hard to push.
 

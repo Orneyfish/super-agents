@@ -3,6 +3,7 @@ __pycache__/
 .super-agents/
 .job/
 .claude/worktrees/
+evals/results/
 
 # MemPalace per-project files (issue #185)
 mempalace.yaml

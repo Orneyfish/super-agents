@@ -39,9 +39,14 @@ awk '
 ' "$ev" || bad=1
 
 if [ "$passed" = 1 ]; then
-  if [ -f "$d/.evals.sha256" ]; then   # fingerprint written by 'board.py set ... ready'; tickets approved before it existed skip this
+  fp="$d/.evals.sha256"   # written by 'board.py set ... ready'; tickets approved before it existed skip this check
+  # a worker runs in a git worktree and could rewrite its own copy, so prefer the user's copy in the main checkout
+  if gc=$(git -C "$d" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) && pre=$(git -C "$d" rev-parse --show-prefix 2>/dev/null); then
+    [ -f "$(dirname "$gc")/${pre}.evals.sha256" ] && fp="$(dirname "$gc")/${pre}.evals.sha256"
+  fi
+  if [ -f "$fp" ]; then
     got=$(python3 -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$ev")
-    [ "$got" = "$(tr -d ' \n' < "$d/.evals.sha256")" ] || fail "evals.md changed after the user approved it; restore it (git checkout) or ask the user to re-approve"
+    [ "$got" = "$(tr -d ' \n' < "$fp")" ] || fail "evals.md changed after the user approved it; restore it (git checkout) or ask the user to re-approve"
   fi
   for id in $(grep -oE '^## E-?[0-9]+' "$ev" | sed 's/## //'); do
     row=$(grep -E "^\| *$id *\|" "$rs" 2>/dev/null | head -1)
