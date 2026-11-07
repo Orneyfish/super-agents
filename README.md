@@ -7,7 +7,7 @@ A Claude Code plugin that makes agents prove their work before calling it done, 
 
 ## Install
 
-Needs `bash`, `git`, `jq` and `python3` (Linux or macOS). Without `jq` the hooks, including the done-gates, cannot run; each session then says so.
+Needs `bash`, `git` and `python3` (Linux or macOS); no other tools. Without `python3` the hooks, including the done-gates, cannot run; each session then says so.
 
 **Claude Code** (everything works: skills, hooks, router and workers):
 
@@ -113,7 +113,7 @@ Ticket `NNN` runs on port `3100+NNN` with test account `tNNN`; the main checkout
 
 ## Development
 
-`bash tests/run.sh` runs the script tests plus consistency checks (manifest versions, hook scripts exist and are executable, agent names match their files, every `super-agents:<name>` reference resolves). It needs `git`, `jq` and `python3`, and runs on Linux and macOS.
+`bash tests/run.sh` runs the script tests plus consistency checks (manifest versions, hook scripts exist and are executable, agent names match their files, every `super-agents:<name>` reference resolves). It needs `git` and `python3`, and fails if any script calls `jq`, and runs on Linux and macOS.
 
 - **CI** (`.github/workflows/ci.yml`): the tests on Linux and macOS, plus ShellCheck on Linux, for every push and pull request.
 - **Release** (`.github/workflows/release.yml`): push a tag `vX.Y.Z` that matches `.claude-plugin/plugin.json`; it re-runs ShellCheck and the tests, then creates the GitHub release.
