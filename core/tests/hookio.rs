@@ -137,3 +137,28 @@ fn status_init_and_status_set_write_the_heartbeat_record() {
     assert_eq!((r.code, r.stdout.as_str()), (1, ""));
     assert!(r.stderr.starts_with("hookio: nope.json: "), "{}", r.stderr);
 }
+
+// Python's json accepts a lone surrogate escape; JS JSON.stringify writes one for a string cut inside an emoji.
+// serde_json refused it, so `get` failed, the gates saw an empty value and let the call through.
+#[test]
+fn a_lone_surrogate_escape_does_not_make_get_fail() {
+    let doc = r#"{"cwd":"/p","agent_type":"super-agents:first-time-user","tool_input":{"command":"cat src\udc00 x","bad":"\ud800"}}"#;
+    let r = get(doc, "agent_type");
+    assert_eq!(
+        (r.code, r.stdout.as_str()),
+        (0, "super-agents:first-time-user\n"),
+        "{}",
+        r.stderr
+    );
+    let r = get(doc, "tool_input");
+    assert_eq!(r.code, 0, "{}", r.stderr);
+    assert!(r.stdout.contains("cat src"), "{}", r.stdout);
+    // a valid pair, and an escaped backslash that only looks like an escape, are left exactly as they were
+    let r = get(r#"{"a":"\ud83d\ude00 \\udc00"}"#, "a");
+    assert_eq!(
+        (r.code, r.stdout.as_str()),
+        (0, "\u{1f600} \\udc00\n"),
+        "{}",
+        r.stderr
+    );
+}
