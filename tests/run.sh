@@ -4,10 +4,12 @@
 # Usage: tests/run.sh      Exit 0 = all passed.
 set -u
 R="$(cd "$(dirname "$0")/.." && pwd)"; X="$R/scripts"; T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
+BOARD="$X/board.py"     # the board command under test
+HOOKIO="$X/hookio.py"   # the hook scripts' JSON helper under test
 pass=0; fail=0; LAST=""
 # the plugin must not need jq: any script that calls it fails loudly against this shim
 mkdir -p "$T/nojq"; printf '#!/bin/sh\necho "jq was called, but the plugin must work without it" >&2\nexit 97\n' > "$T/nojq/jq"; chmod +x "$T/nojq/jq"; PATH="$T/nojq:$PATH"
-jget() { "$X/hookio.py" get "$1"; }                                   # value of a path in the JSON on stdin
+jget() { $HOOKIO get "$1"; }                                   # value of a path in the JSON on stdin
 js() { python3 -c 'import json,sys;print(json.dumps(dict(a.split("=",1) for a in sys.argv[1:])))' "$@"; }   # js k=v ... : a flat JSON object of strings
 t()   { local n=$1 want=$2; shift 2; LAST=$("$@" 2>&1); local rc=$?; [ "$rc" = "$want" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL $n: exit $rc, wanted $want"; echo "$LAST" | head -4; }; }
 has() { grep -qF -- "$2" <<<"$LAST" && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL $1: output lacks '$2'"; echo "$LAST" | head -4; }; }
@@ -19,7 +21,7 @@ iso() { python3 -c 'import datetime as d,sys;print((d.datetime.now(d.timezone.ut
 age() { python3 -c 'import os,sys,time;t=time.time()-float(sys.argv[2])*3600;os.utime(sys.argv[1],(t,t))' "$1" "$2"; }
 
 # ---- hookio.py (the JSON glue that replaces jq)
-H=$X/hookio.py; eq() { [ "$2" = "$3" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL $1: got '$2', wanted '$3'"; }; }
+H=$HOOKIO; eq() { [ "$2" = "$3" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL $1: got '$2', wanted '$3'"; }; }
 J='{"a":{"b":"x y"},"n":5,"o":{"k":[1]},"z":null,"t":true}'
 eq hookio-get-nested "$(echo "$J" | $H get a.b)" "x y";            eq hookio-get-number "$(echo "$J" | $H get n)" 5
 eq hookio-get-object "$(echo "$J" | $H get o)" '{"k":[1]}';        eq hookio-get-bool "$(echo "$J" | $H get t)" true
@@ -34,6 +36,12 @@ t hookio-emit-deny 0 $H emit deny why;                              eq hookio-em
 t hookio-emit-context 0 $H emit context hi;                         eq hookio-emit-context "$(echo "$LAST" | $H get hookSpecificOutput.additionalContext)/$(echo "$LAST" | $H get hookSpecificOutput.hookEventName)" "hi/SessionStart"
 t hookio-emit-message 0 $H emit message hi;                         eq hookio-emit-message "$(echo "$LAST" | $H get systemMessage)" hi; eq hookio-emit-message-top-level "$(echo "$LAST" | $H get hookSpecificOutput)" ""
 t hookio-usage 1 $H
+# characterization (kept when hookio moves to sa-core): the exact bytes Claude Code parses, and the key order
+eq hookio-emit-bytes "$($H emit block 'a "b" é')" "$(printf '{\n  "decision": "block",\n  "reason": "a \\"b\\" \\u00e9"\n}')"
+eq hookio-get-compact "$(echo '{"o":{"b":1,"a":"é"}}' | $H get o)" '{"b":1,"a":"\u00e9"}'
+eq hookio-status-init "$($H status-init 001 tickets/001-x building 2026-11-07T10:15:00Z a)" "$(printf '{\n  "ticket": "001",\n  "dir": "tickets/001-x",\n  "phase": "building",\n  "started": "2026-11-07T10:15:00Z",\n  "updated": "2026-11-07T10:15:00Z",\n  "note": "",\n  "agent": "a"\n}')"
+printf '{"z": 1, "phase": "x", "ticket": "001"}' > "$T/st.json"
+eq hookio-status-set "$($H status-set "$T/st.json" testing n 2026-11-07T10:16:00Z)" "$(printf '{\n  "z": 1,\n  "phase": "testing",\n  "ticket": "001",\n  "note": "n",\n  "updated": "2026-11-07T10:16:00Z"\n}')"
 
 # ---- fixture: git repo with three tickets
 cd "$T" && mkdir repo && cd repo && git init -q -b main && git config user.email t@t && git config user.name t && echo x > f && git add . && git commit -qm init
@@ -45,18 +53,34 @@ printf '# Board\n| # | Title | Status | Mode | Runs |\n|---|---|---|---|---|\n| 
 D=specs/tickets/001-found
 
 # ---- board.py
-t board-ok 0 $X/board.py check;                                  has board-ok "OK: board (3 tickets)"
-sedi 's/waits for 001/waits for 009/' specs/tickets/BOARD.md; t board-missing-dep 1 $X/board.py check; has board-missing-dep "not on the board"; sedi 's/waits for 009/waits for 001/' specs/tickets/BOARD.md
-cp specs/tickets/BOARD.md B.bak; sedi 's/| 001 | Found | draft | team | alongside |/| 001 | Found | draft | team | waits for 002: x |/' specs/tickets/BOARD.md; t board-cycle 1 $X/board.py check; has board-cycle "dependency cycle"; cp B.bak specs/tickets/BOARD.md
-t set-ticket 0 $X/board.py set 001 ready;                         grep -q '| 001 | Found | ready' specs/tickets/BOARD.md && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL set-ticket: board row"; }
-t set-dir-syncs-row 0 $X/board.py set specs/tickets/002-reset ready; t board-still-ok 0 $X/board.py check
-t set-bad-status 1 $X/board.py set 001 wip
-mkdir -p sub/deep; t set-from-subdir 0 bash -c "cd sub/deep && $X/board.py set 001 building"; t board-ok-2 0 $X/board.py check
+t board-ok 0 $BOARD check;                                  has board-ok "OK: board (3 tickets)"
+sedi 's/waits for 001/waits for 009/' specs/tickets/BOARD.md; t board-missing-dep 1 $BOARD check; has board-missing-dep "not on the board"; sedi 's/waits for 009/waits for 001/' specs/tickets/BOARD.md
+cp specs/tickets/BOARD.md B.bak; sedi 's/| 001 | Found | draft | team | alongside |/| 001 | Found | draft | team | waits for 002: x |/' specs/tickets/BOARD.md; t board-cycle 1 $BOARD check; has board-cycle "dependency cycle"; cp B.bak specs/tickets/BOARD.md
+t set-ticket 0 $BOARD set 001 ready;                         grep -q '| 001 | Found | ready' specs/tickets/BOARD.md && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL set-ticket: board row"; }
+t set-dir-syncs-row 0 $BOARD set specs/tickets/002-reset ready; t board-still-ok 0 $BOARD check
+t set-bad-status 1 $BOARD set 001 wip
+mkdir -p sub/deep; t set-from-subdir 0 bash -c "cd sub/deep && $BOARD set 001 building"; t board-ok-2 0 $BOARD check
+# characterization (kept when the board moves to sa-core): the main checkout, every kind of row problem,
+# an inserted Status line, a fingerprint only for 'ready', an unknown ticket
+t board-root 0 bash -c "cd sub/deep && $BOARD root";               eq board-root "$(cd "$LAST" && pwd -P)" "$(pwd -P)"
+mkdir -p specs/tickets/004-extra; cp specs/tickets/BOARD.md B.bak
+printf '# Board\n| # | Title | Status | Mode | Runs |\n|---|---|---|---|---|\n| 001 | Found | ready | team | alongside |\n| 001 | Again | building | duo | later |\n| 005 | Gone | draft | solo | alongside |\n' > specs/tickets/BOARD.md
+t board-problems 1 $BOARD check
+for m in "FAIL: duplicate id 001" "001: mode must be solo or team" "001: Runs must be 'alongside' or 'waits for NNN: why'" "005: no folder specs/tickets/005-*" "003-profile has no board row" "004-extra has no board row"; do
+  has "board-problems: $m" "$m"
+done
+cp B.bak specs/tickets/BOARD.md; rmdir specs/tickets/004-extra
+mkdir -p specs/feat; printf '# Feat\nbody\n' > specs/feat/RD.md
+t set-inserts-status 0 $BOARD set specs/feat building
+[ "$(cat specs/feat/RD.md)" = "$(printf '# Feat\n\n**Status:** building\nbody')" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL set-inserts-status: RD.md is: $(cat specs/feat/RD.md)"; }
+[ ! -e specs/feat/.evals.sha256 ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL set-inserts-status: fingerprint written for 'building'"; }
+rm -rf specs/feat
+t set-unknown 1 $BOARD set 009 ready;                             has set-unknown "no such ticket or directory: 009"
 
 # ---- check-evals.sh
 t eval-structure 0 $X/check-evals.sh $D
 t eval-ready-while-building 1 $X/check-evals.sh $D --ready;       has eval-ready-while-building "must approve"
-$X/board.py set $D ready >/dev/null; t eval-ready 0 $X/check-evals.sh $D --ready
+$BOARD set $D ready >/dev/null; t eval-ready 0 $X/check-evals.sh $D --ready
 t eval-passed-no-results 1 $X/check-evals.sh $D --passed;          has eval-passed-no-results "no row"
 mkdir -p $D/evidence; echo ok > $D/evidence/a.png
 printf '| eval | result | evidence |\n|---|---|---|\n| E1 | pass | evidence/a.png: ok |\n| E2 | fail | slow |\n' > $D/results.md
@@ -173,41 +197,47 @@ LAST=$(echo "{\"cwd\":\"$T/np\",\"agent_type\":\"super-agents:worker\"}" | $X/wo
 cd $T/repo || exit
 
 # ---- board.py scan (watchdog)
-$X/board.py set 001 building >/dev/null
-t scan-no-heartbeat 0 $X/board.py scan;                           has scan-no-heartbeat "no status file"
+$BOARD set 001 building >/dev/null
+t scan-no-heartbeat 0 $BOARD scan;                           has scan-no-heartbeat "no status file"
 mkdir -p .job; js ticket=001 phase=testing started="$(iso 3)" updated="$(iso 2)" note="" agent=a > .job/status-001-a.json
-t scan-healthy 0 $X/board.py scan;                                silent scan-healthy
+t scan-healthy 0 $BOARD scan;                                silent scan-healthy
 js ticket=001 phase=building started="$(iso 41)" updated="$(iso 40)" note="" agent=a > .job/status-001-a.json
-t scan-silent 0 $X/board.py scan;                                 has scan-silent "silent for"
+t scan-silent 0 $BOARD scan;                                 has scan-silent "silent for"
 # a worker in testing/reviewing is blocked on its own tester/reviewer and cannot heartbeat: it gets wait_min (45), not stale_min (15)
 js ticket=001 phase=testing started="$(iso 41)" updated="$(iso 40)" note="" agent=a > .job/status-001-a.json
-t scan-waiting-ok 0 $X/board.py scan;                             silent scan-waiting-ok
+t scan-waiting-ok 0 $BOARD scan;                             silent scan-waiting-ok
 js ticket=001 phase=testing started="$(iso 51)" updated="$(iso 50)" note="" agent=a > .job/status-001-a.json
-t scan-waiting-too-long 0 $X/board.py scan;                       has scan-waiting-too-long "silent for"
+t scan-waiting-too-long 0 $BOARD scan;                       has scan-waiting-too-long "silent for"
 js ticket=001 phase=building started="$(iso 41)" updated="$(iso 40)" note="" agent=a > .job/status-001-a.json
-mkdir -p .super-agents; printf 'ignore=001\n' > .super-agents/watchdog.conf; t scan-ignore 0 $X/board.py scan; silent scan-ignore
+mkdir -p .super-agents; printf 'ignore=001\n' > .super-agents/watchdog.conf; t scan-ignore 0 $BOARD scan; silent scan-ignore
 js ticket=001 phase=blocked started="$(iso 2)" updated="$(iso 1)" note="db down" agent=a > .job/status-001-a.json; : > .super-agents/watchdog.conf
-t scan-blocked 0 $X/board.py scan;                                has scan-blocked "blocked: db down"
+t scan-blocked 0 $BOARD scan;                                has scan-blocked "blocked: db down"
 # L6: one unreadable status file or one bad number in watchdog.conf must not hide the other problems
-$X/board.py set 003 building >/dev/null
+$BOARD set 003 building >/dev/null
 js ticket=001 phase=building agent=a > .job/status-001-a.json
-t scan-malformed 0 $X/board.py scan;                              has scan-malformed "001 status file unreadable"; has scan-malformed-others "003 is 'building'"
+t scan-malformed 0 $BOARD scan;                              has scan-malformed "001 status file unreadable"; has scan-malformed-others "003 is 'building'"
 printf '{not json' > .job/status-001-a.json
-t scan-badjson 0 $X/board.py scan;                                has scan-badjson "status-001-a.json unreadable"
+t scan-badjson 0 $BOARD scan;                                has scan-badjson "status-001-a.json unreadable"
 js ticket=001 phase=building started="$(iso 41)" updated="$(iso 40)" note="" agent=a > .job/status-001-a.json; printf 'stale_min=abc\n' > .super-agents/watchdog.conf
-t scan-bad-conf 0 $X/board.py scan;                               has scan-bad-conf "silent for"
+t scan-bad-conf 0 $BOARD scan;                               has scan-bad-conf "silent for"
 # PR review: nan/inf thresholds fall back to the defaults, one bad file does not hide its siblings, a finished ticket's stale file is not a problem
 printf 'stale_min=nan\nslow_min=inf\n' > .super-agents/watchdog.conf
-t scan-nonfinite 0 $X/board.py scan;                              has scan-nonfinite "silent for"
+t scan-nonfinite 0 $BOARD scan;                              has scan-nonfinite "silent for"
 : > .super-agents/watchdog.conf
 js ticket=001 phase=building agent=a > .job/status-001-a.json
 js ticket=001 phase=blocked started="$(iso 6)" updated="$(iso 5)" note="db down" agent=b > .job/status-001-b.json
-t scan-malformed-sibling 0 $X/board.py scan;                      has scan-malformed-sibling "blocked: db down"; has scan-malformed-sibling-flag "unreadable"
+t scan-malformed-sibling 0 $BOARD scan;                      has scan-malformed-sibling "blocked: db down"; has scan-malformed-sibling-flag "unreadable"
 rm -f .job/status-001-b.json; printf 'ignore=001,003\n' > .super-agents/watchdog.conf; printf '{broken' > .job/status-001-a.json
-t scan-stale-unreadable 0 $X/board.py scan;                       silent scan-stale-unreadable
+t scan-stale-unreadable 0 $BOARD scan;                       silent scan-stale-unreadable
 : > .super-agents/watchdog.conf
-$X/board.py set 003 ready >/dev/null
+$BOARD set 003 ready >/dev/null
 
+js ticket=001 phase=building started="$(iso 70)" updated="$(iso 2)" note="" agent=a > .job/status-001-a.json
+t scan-slow 0 $BOARD scan;                                        has scan-slow "PROBLEM 001 slow: building for 70 min"
+rm .job/status-001-a.json; mkdir -p .claude/worktrees/w1/.job
+js ticket=001 phase=building started="$(iso 41)" updated="$(iso 40)" note="" agent= > .claude/worktrees/w1/.job/status.json
+t scan-worktree 0 $BOARD scan;                                    has scan-worktree "PROBLEM 001 worker silent for 40 min in phase 'building'"
+rm -rf .claude
 # L1: a bad interval_min falls back to 10 minutes (with a warning) instead of busy-looping or killing the watchdog
 mkdir -p $T/fs; printf '#!/bin/sh\necho "SLEEP $1"\nkill $PPID\n' > $T/fs/sleep; chmod +x $T/fs/sleep
 wl() { printf 'interval_min=%s\n' "$1" > .super-agents/watchdog.conf; LAST=$(PATH="$T/fs:$PATH" $X/watchdog-loop.sh 2>&1); }
@@ -354,7 +384,7 @@ B="$R/bin/super-agents"; ln -s "$B" $T/bin/super-agents; SA=$T/bin/super-agents
 t sa-usage 2 $SA;                                                   has sa-usage "usage: super-agents"
 t sa-template 0 $SA template RD.md;                                 has sa-template "**Status:** draft"
 t sa-template-traversal 2 $SA template ../README.md
-cd $T/repo || exit; $X/board.py set 001 ready >/dev/null; $X/board.py set 002 ready >/dev/null; $X/board.py set 003 ready >/dev/null
+cd $T/repo || exit; $BOARD set 001 ready >/dev/null; $BOARD set 002 ready >/dev/null; $BOARD set 003 ready >/dev/null
 t sa-board 0 $SA board check;                                       has sa-board "OK: board"
 t sa-check-evals 0 $SA check-evals specs/tickets/003-profile --ready
 t sa-link-skills 0 $SA link-skills $T/skills-out;                   [ "$(ls $T/skills-out | wc -l)" = "$(ls $R/skills | wc -l)" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL link-skills count"; }
@@ -368,7 +398,7 @@ t sa-link-skills-again 0 $SA link-skills $T/skills-out;             hasnt sa-lin
 git init -q -b main $T/sub && git -C $T/sub -c user.email=t@t -c user.name=t commit -q --allow-empty -m s
 git init -q -b main $T/sup && (cd $T/sup && git -c protocol.file.allow=always submodule add -q ../sub sub)
 mkdir -p $T/sup/sub/specs/tickets; printf '# Board\n| # | Title | Status | Mode | Runs |\n|---|---|---|---|---|\n' > $T/sup/sub/specs/tickets/BOARD.md
-t board-in-submodule 0 bash -c "cd $T/sup/sub && $X/board.py check";  has board-in-submodule "OK: board"
+t board-in-submodule 0 bash -c "cd $T/sup/sub && $BOARD check";  has board-in-submodule "OK: board"
 mkfix $T/sup/sub/f; fp $T/sup/sub/f
 (cd $T/sup/sub && git add -A f >/dev/null && git -c user.email=t@t -c user.name=t commit -qm f && git worktree add -q $T/subwt -b w)
 rm -f $T/subwt/f/.evals.sha256; sedi 's/- fail when: f/- fail when: loosened/' $T/subwt/f/evals.md
