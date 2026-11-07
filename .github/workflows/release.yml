@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Tag must match the plugin version
         run: |
-          v=$(jq -r .version .claude-plugin/plugin.json)
+          v=$(python3 -c 'import json;print(json.load(open(".claude-plugin/plugin.json"))["version"])')
           [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME does not match plugin.json version v$v" >&2; exit 1; }
       - name: ShellCheck
         run: shellcheck -x -S warning bin/super-agents scripts/*.sh tests/run.sh .githooks/pre-push

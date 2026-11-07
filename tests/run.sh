@@ -5,6 +5,10 @@
 set -u
 R="$(cd "$(dirname "$0")/.." && pwd)"; X="$R/scripts"; T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 pass=0; fail=0; LAST=""
+# the plugin must not need jq: any script that calls it fails loudly against this shim
+mkdir -p "$T/nojq"; printf '#!/bin/sh\necho "jq was called, but the plugin must work without it" >&2\nexit 97\n' > "$T/nojq/jq"; chmod +x "$T/nojq/jq"; PATH="$T/nojq:$PATH"
+jget() { "$X/hookio.py" get "$1"; }                                   # value of a path in the JSON on stdin
+js() { python3 -c 'import json,sys;print(json.dumps(dict(a.split("=",1) for a in sys.argv[1:])))' "$@"; }   # js k=v ... : a flat JSON object of strings
 t()   { local n=$1 want=$2; shift 2; LAST=$("$@" 2>&1); local rc=$?; [ "$rc" = "$want" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL $n: exit $rc, wanted $want"; echo "$LAST" | head -4; }; }
 has() { grep -qF -- "$2" <<<"$LAST" && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL $1: output lacks '$2'"; echo "$LAST" | head -4; }; }
 hasnt() { grep -qF -- "$2" <<<"$LAST" && { fail=$((fail+1)); echo "FAIL $1: output has '$2'"; } || pass=$((pass+1)); }
@@ -13,6 +17,22 @@ silent() { [ -z "$LAST" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL 
 sedi() { local f=${!#}; sed -i.bak "$@" && rm -f "$f.bak"; }
 iso() { python3 -c 'import datetime as d,sys;print((d.datetime.now(d.timezone.utc)-d.timedelta(minutes=float(sys.argv[1]))).strftime("%Y-%m-%dT%H:%M:%SZ"))' "$1"; }
 age() { python3 -c 'import os,sys,time;t=time.time()-float(sys.argv[2])*3600;os.utime(sys.argv[1],(t,t))' "$1" "$2"; }
+
+# ---- hookio.py (the JSON glue that replaces jq)
+H=$X/hookio.py; eq() { [ "$2" = "$3" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL $1: got '$2', wanted '$3'"; }; }
+J='{"a":{"b":"x y"},"n":5,"o":{"k":[1]},"z":null,"t":true}'
+eq hookio-get-nested "$(echo "$J" | $H get a.b)" "x y";            eq hookio-get-number "$(echo "$J" | $H get n)" 5
+eq hookio-get-object "$(echo "$J" | $H get o)" '{"k":[1]}';        eq hookio-get-bool "$(echo "$J" | $H get t)" true
+eq hookio-get-missing "$(echo "$J" | $H get a.nope.deeper)" "";    eq hookio-get-null "$(echo "$J" | $H get z)" ""
+eq hookio-get-bad-json "$(echo '{oops' | $H get a 2>/dev/null)" ""; t hookio-bad-json-exit 1 bash -c "echo '{oops' | $H get a"
+t hookio-emit-block 0 $H emit block 'line1
+line2 "quoted" é';                                                  has hookio-emit-block '"decision": "block"'
+eq hookio-emit-roundtrip "$(echo "$LAST" | $H get reason)" 'line1
+line2 "quoted" é'
+t hookio-emit-deny 0 $H emit deny why;                              has hookio-emit-deny '"permissionDecision": "deny"'
+t hookio-emit-context 0 $H emit context hi;                         has hookio-emit-context '"additionalContext": "hi"'
+t hookio-emit-message 0 $H emit message hi;                         has hookio-emit-message '"systemMessage": "hi"'
+t hookio-usage 1 $H
 
 # ---- fixture: git repo with three tickets
 cd "$T" && mkdir repo && cd repo && git init -q -b main && git config user.email t@t && git config user.name t && echo x > f && git add . && git commit -qm init
@@ -115,10 +135,10 @@ sedi 's/| E2 | fail |/| E2 | pass |/' $D/results.md; rm -rf .super-agents
 
 # ---- job-status.sh + worker-gate.sh (SubagentStop)
 W=$T/wt; mkdir -p $W; cd $W || exit
-t job-init 0 $X/job-status.sh init 001 "$T/repo/$D" building; [ "$(jq -r .phase .job/status.json)" = building ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL job-init"; }
+t job-init 0 $X/job-status.sh init 001 "$T/repo/$D" building; [ "$(jget phase < .job/status.json)" = building ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL job-init"; }
 # PR review: a worker restarted in an old worktree starts with a fresh block count
 echo 3 > .job/gate_blocks; $X/job-status.sh init 001 "$T/repo/$D" building; [ ! -f .job/gate_blocks ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL init kept the old gate_blocks"; }
-t job-update 0 $X/job-status.sh testing "note"; [ "$(jq -r '.phase+.note' .job/status.json)" = testingnote ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL job-update"; }
+t job-update 0 $X/job-status.sh testing "note"; [ "$(jget phase < .job/status.json)$(jget note < .job/status.json)" = testingnote ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL job-update"; }
 t job-team-file 0 $X/job-status.sh --name 001-a init 001 "$T/repo/$D" building; [ -f .job/status-001-a.json ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL job-team-file"; }
 wg() { LAST=$(echo "{\"cwd\":\"$W\",\"agent_type\":\"$1\"}" | $X/worker-gate.sh); }
 wg super-agents:builder; silent wgate-other-agent
@@ -131,8 +151,8 @@ echo 2 > .job/gate_blocks; $X/job-status.sh building; [ ! -f .job/gate_blocks ] 
 sedi 's/| E2 | fail |/| E2 | pass |/' $T/repo/$D/results.md; wg worker; silent wgate-passing
 # M2: init stores an absolute ticket dir; a relative one in status.json is resolved against the worker's cwd, not the hook's
 W3=$T/wt3; mkdir -p $W3/$D $W3/.job; cp -R $T/repo/$D/. $W3/$D/; sedi 's/| E2 | pass |/| E2 | fail |/' $W3/$D/results.md
-(cd $W3 && $X/job-status.sh init 001 $D building); [[ $(jq -r .dir $W3/.job/status.json) == /* ]] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL job-status init kept a relative dir"; }
-jq '.dir="specs/tickets/001-found"' $W3/.job/status.json > $W3/.job/s.tmp && mv $W3/.job/s.tmp $W3/.job/status.json
+(cd $W3 && $X/job-status.sh init 001 $D building); [[ $(jget dir < $W3/.job/status.json) == /* ]] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL job-status init kept a relative dir"; }
+sedi 's#"dir": "[^"]*"#"dir": "specs/tickets/001-found"#' $W3/.job/status.json
 cd $T/repo || exit; LAST=$(echo "{\"cwd\":\"$W3\",\"agent_type\":\"worker\"}" | $X/worker-gate.sh); has wgate-relative-dir '"decision": "block"'
 # M2: a worker whose gate cannot run is told so
 LAST=$(echo "{\"cwd\":\"$T/np\",\"agent_type\":\"worker\"}" | $X/worker-gate.sh); has wgate-skip-notice "worker gate skipped"
@@ -141,33 +161,33 @@ cd $T/repo || exit
 # ---- board.py scan (watchdog)
 $X/board.py set 001 building >/dev/null
 t scan-no-heartbeat 0 $X/board.py scan;                           has scan-no-heartbeat "no status file"
-mkdir -p .job; jq -n --arg u "$(iso 2)" --arg s "$(iso 3)" '{ticket:"001",phase:"testing",started:$s,updated:$u,note:"",agent:"a"}' > .job/status-001-a.json
+mkdir -p .job; js ticket=001 phase=testing started="$(iso 3)" updated="$(iso 2)" note="" agent=a > .job/status-001-a.json
 t scan-healthy 0 $X/board.py scan;                                silent scan-healthy
-jq -n --arg u "$(iso 40)" --arg s "$(iso 41)" '{ticket:"001",phase:"building",started:$s,updated:$u,note:"",agent:"a"}' > .job/status-001-a.json
+js ticket=001 phase=building started="$(iso 41)" updated="$(iso 40)" note="" agent=a > .job/status-001-a.json
 t scan-silent 0 $X/board.py scan;                                 has scan-silent "silent for"
 # a worker in testing/reviewing is blocked on its own tester/reviewer and cannot heartbeat: it gets wait_min (45), not stale_min (15)
-jq -n --arg u "$(iso 40)" --arg s "$(iso 41)" '{ticket:"001",phase:"testing",started:$s,updated:$u,note:"",agent:"a"}' > .job/status-001-a.json
+js ticket=001 phase=testing started="$(iso 41)" updated="$(iso 40)" note="" agent=a > .job/status-001-a.json
 t scan-waiting-ok 0 $X/board.py scan;                             silent scan-waiting-ok
-jq -n --arg u "$(iso 50)" --arg s "$(iso 51)" '{ticket:"001",phase:"testing",started:$s,updated:$u,note:"",agent:"a"}' > .job/status-001-a.json
+js ticket=001 phase=testing started="$(iso 51)" updated="$(iso 50)" note="" agent=a > .job/status-001-a.json
 t scan-waiting-too-long 0 $X/board.py scan;                       has scan-waiting-too-long "silent for"
-jq -n --arg u "$(iso 40)" --arg s "$(iso 41)" '{ticket:"001",phase:"building",started:$s,updated:$u,note:"",agent:"a"}' > .job/status-001-a.json
+js ticket=001 phase=building started="$(iso 41)" updated="$(iso 40)" note="" agent=a > .job/status-001-a.json
 mkdir -p .super-agents; printf 'ignore=001\n' > .super-agents/watchdog.conf; t scan-ignore 0 $X/board.py scan; silent scan-ignore
-jq -n --arg u "$(iso 1)" --arg s "$(iso 2)" '{ticket:"001",phase:"blocked",started:$s,updated:$u,note:"db down",agent:"a"}' > .job/status-001-a.json; : > .super-agents/watchdog.conf
+js ticket=001 phase=blocked started="$(iso 2)" updated="$(iso 1)" note="db down" agent=a > .job/status-001-a.json; : > .super-agents/watchdog.conf
 t scan-blocked 0 $X/board.py scan;                                has scan-blocked "blocked: db down"
 # L6: one unreadable status file or one bad number in watchdog.conf must not hide the other problems
 $X/board.py set 003 building >/dev/null
-jq -n '{ticket:"001",phase:"building",agent:"a"}' > .job/status-001-a.json
+js ticket=001 phase=building agent=a > .job/status-001-a.json
 t scan-malformed 0 $X/board.py scan;                              has scan-malformed "001 status file unreadable"; has scan-malformed-others "003 is 'building'"
 printf '{not json' > .job/status-001-a.json
 t scan-badjson 0 $X/board.py scan;                                has scan-badjson "status-001-a.json unreadable"
-jq -n --arg u "$(iso 40)" --arg s "$(iso 41)" '{ticket:"001",phase:"building",started:$s,updated:$u,note:"",agent:"a"}' > .job/status-001-a.json; printf 'stale_min=abc\n' > .super-agents/watchdog.conf
+js ticket=001 phase=building started="$(iso 41)" updated="$(iso 40)" note="" agent=a > .job/status-001-a.json; printf 'stale_min=abc\n' > .super-agents/watchdog.conf
 t scan-bad-conf 0 $X/board.py scan;                               has scan-bad-conf "silent for"
 # PR review: nan/inf thresholds fall back to the defaults, one bad file does not hide its siblings, a finished ticket's stale file is not a problem
 printf 'stale_min=nan\nslow_min=inf\n' > .super-agents/watchdog.conf
 t scan-nonfinite 0 $X/board.py scan;                              has scan-nonfinite "silent for"
 : > .super-agents/watchdog.conf
-jq -n '{ticket:"001",phase:"building",agent:"a"}' > .job/status-001-a.json
-jq -n --arg u "$(iso 5)" --arg s "$(iso 6)" '{ticket:"001",phase:"blocked",started:$s,updated:$u,note:"db down",agent:"b"}' > .job/status-001-b.json
+js ticket=001 phase=building agent=a > .job/status-001-a.json
+js ticket=001 phase=blocked started="$(iso 6)" updated="$(iso 5)" note="db down" agent=b > .job/status-001-b.json
 t scan-malformed-sibling 0 $X/board.py scan;                      has scan-malformed-sibling "blocked: db down"; has scan-malformed-sibling-flag "unreadable"
 rm -f .job/status-001-b.json; printf 'ignore=001,003\n' > .super-agents/watchdog.conf; printf '{broken' > .job/status-001-a.json
 t scan-stale-unreadable 0 $X/board.py scan;                       silent scan-stale-unreadable
@@ -223,7 +243,7 @@ git rm -q --cached mine.txt; rm mine.txt
 git switch -q main; git branch -q -D feat/y
 
 # ---- hooks
-ftu() { LAST=$(jq -nc --arg a "$1" --arg c "$2" --arg d "$T" '{cwd:$d,agent_type:$a,tool_name:"Bash",tool_input:{command:$c}}' | $X/block-code-reads.sh); }
+ftu() { LAST=$(python3 -c 'import json,sys;print(json.dumps({"cwd":sys.argv[3],"agent_type":sys.argv[1],"tool_name":"Bash","tool_input":{"command":sys.argv[2]}}))' "$1" "$2" "$T" | $X/block-code-reads.sh); }
 ftu "" "cat src/app.py"; silent hook-main-agent-free
 ftu super-agents:builder "grep -r x ."; silent hook-other-agent-free
 ftu super-agents:first-time-user "cat src/app.py"; has hook-ftu-cat-denied '"permissionDecision": "deny"'
@@ -245,7 +265,7 @@ for c in 'curl -s localhost:3000/health | grep ok' 'curl -s localhost:3000/ | he
 done
 ftu super-agents:first-time-user "echo hi | cat f"; has hook-ftu-reason-names-match "'cat'"
 # L7: browser tools are checked too: the app's URLs are fine, file: URLs are not
-ftb() { LAST=$(jq -nc --arg d "$T" --argjson i "$1" '{cwd:$d,agent_type:"super-agents:first-time-user",tool_name:"mcp__claude-in-chrome__navigate",tool_input:$i}' | $X/block-code-reads.sh); }
+ftb() { LAST=$(python3 -c 'import json,sys;print(json.dumps({"cwd":sys.argv[2],"agent_type":"super-agents:first-time-user","tool_name":"mcp__claude-in-chrome__navigate","tool_input":json.loads(sys.argv[1])}))' "$1" "$T" | $X/block-code-reads.sh); }
 ftb '{"url":"http://localhost:3000/"}'; silent hook-ftu-browser-allowed
 ftb '{"url":"file:///home/me/project/src/app.py"}'; has hook-ftu-browser-file-denied '"permissionDecision": "deny"'
 ftb '{"url":"FILE:///home/me/project/src/app.py"}'; has hook-ftu-browser-FILE-denied '"permissionDecision": "deny"'
@@ -256,13 +276,13 @@ done
 for c in 'curl -s x | grep -n ok' "curl -s x | sed 's/a/b/'" 'curl -s x | jq .items | head -3'; do
   ftu super-agents:first-time-user "$c"; silent "hook-ftu-allowed: $c"
 done
-jq -e '.hooks.PreToolUse[0].matcher | test("mcp__claude-in-chrome__")' "$R/hooks/hooks.json" >/dev/null && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL hooks.json matcher does not cover the browser tools"; }
+python3 -c 'import json,sys;sys.exit("mcp__claude-in-chrome__" not in json.load(open(sys.argv[1]))["hooks"]["PreToolUse"][0]["matcher"])' "$R/hooks/hooks.json" && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL hooks.json matcher does not cover the browser tools"; }
 LAST=$(echo "{\"cwd\":\"$T/np\"}" | $X/session-start.sh); has session-agreement "super-agents plugin is active"
 # L4: the active-loop note lists dir and round
 mkdir -p $T/p6/.super-agents; git -C $T/p6 init -q -b main; touch $T/p6/review.md; printf -- '---\ndir: specs/x\nactive: true\nround: 2\n---\n' > $T/p6/.super-agents/state.md
 LAST=$(echo "{\"cwd\":\"$T/p6\"}" | $X/session-start.sh); has session-active-loop "dir specs/x round 2"
 LAST=$(echo "{\"cwd\":\"$T/repo\"}" | $X/session-start.sh); has session-nudge "/super-agents:setup-project"
-t session-no-jq 0 env PATH="$T/nopath" "$BASH" $X/session-start.sh;  has session-no-jq "jq is not installed"   # hooks need jq; say so instead of silently doing nothing
+t session-no-python 0 env PATH="$T/nopath" "$BASH" $X/session-start.sh;  has session-no-python "python3 is not installed"   # hooks need python3; say so instead of silently doing nothing
 
 
 # ---- AGENTS.md is refreshed when present, never created
@@ -316,9 +336,9 @@ for f in "$R"/agents/*.md "$R"/skills/*/SKILL.md; do
   grep -qE 'job-status\.sh|board\.py' "$f" && bad "$f names job-status.sh or board.py directly; use 'super-agents job-status' / 'super-agents board'" || ok
 done
 python3 -B -c 'import ast,sys;ast.parse(open(sys.argv[1]).read())' "$X/board.py" && ok || bad "scripts/board.py does not parse"
-v1=$(jq -r .version "$R/.claude-plugin/plugin.json"); v2=$(jq -r '.plugins[0].version' "$R/.claude-plugin/marketplace.json")
+v1=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["version"])' "$R/.claude-plugin/plugin.json"); v2=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["plugins"][0]["version"])' "$R/.claude-plugin/marketplace.json")
 [ -n "$v1" ] && [ "$v1" = "$v2" ] && ok || bad "manifest versions differ: plugin.json '$v1', marketplace.json '$v2'"
-for s in $(jq -r '.. | .command? // empty' "$R/hooks/hooks.json" | sed -E 's#.*/scripts/([A-Za-z0-9._-]+).*#\1#'); do
+for s in $(python3 -c 'import json,re,sys;print(*re.findall(r"/scripts/([A-Za-z0-9._-]+)", open(sys.argv[1]).read()))' "$R/hooks/hooks.json"); do
   [ -x "$X/$s" ] && ok || bad "hooks.json runs scripts/$s, which is missing or not executable"
 done
 for f in "$R"/scripts/* "$R"/bin/*; do [ -x "$f" ] && ok || bad "$f is not executable"; done
