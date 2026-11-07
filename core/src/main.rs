@@ -49,6 +49,15 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         }
+        ["board", "set", target, status, rest @ ..] if rest.len() <= 1 => {
+            match board::set_status(&root(rest), target, status) {
+                Ok(()) => {
+                    println!("ok {target} -> {status}");
+                    ExitCode::SUCCESS
+                }
+                Err(message) => fail(&message),
+            }
+        }
         ["board", "root"] => {
             println!("{}", gitroot::main_checkout().display());
             ExitCode::SUCCESS

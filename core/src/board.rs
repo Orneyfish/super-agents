@@ -3,8 +3,8 @@
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::fs;
-use std::io;
+use std::fs::{self, OpenOptions};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
@@ -224,4 +224,83 @@ pub fn check(root: &Path) -> (String, bool) {
             false,
         )
     }
+}
+
+/// The whole first `**Status:**` line, without its line ending (so CRLF files stay CRLF).
+static STATUS_LINE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^\*\*Status:\*\*[^\r\n]*").expect("status line regex"));
+
+/// `board set`: RD.md's Status line, the fingerprint on `ready`, and the board row for a ticket folder.
+pub fn set_status(root: &Path, target: &str, status: &str) -> Result<(), String> {
+    if !STATUSES.contains(&status) {
+        return Err(format!("status must be one of {STATUSES_TEXT}"));
+    }
+    let is_number = target.len() == 3 && target.bytes().all(|b| b.is_ascii_digit());
+    let dir = if is_number {
+        ticket_dir(root, target)
+    } else {
+        Some(PathBuf::from(target))
+    };
+    let dir = dir
+        .filter(|d| d.is_dir())
+        .ok_or_else(|| format!("no such ticket or directory: {target}"))?;
+    // a ticket folder keeps its board row in sync, however it was named on the command line
+    let number = ticket_number(&dir).or_else(|| is_number.then(|| target.to_string()));
+
+    let rd = dir.join("RD.md");
+    let text = fs::read_to_string(&rd).map_err(|e| format!("{}: {e}", rd.display()))?;
+    let line = format!("**Status:** {status}");
+    let updated = if STATUS_LINE.is_match(&text) {
+        STATUS_LINE
+            .replace(&text, regex::NoExpand(line.as_str()))
+            .into_owned()
+    } else {
+        let nl = if text.contains("\r\n") { "\r\n" } else { "\n" };
+        text.replacen(nl, &format!("{nl}{nl}{line}{nl}"), 1)
+    };
+    fs::write(&rd, updated).map_err(|e| format!("{}: {e}", rd.display()))?;
+
+    // the fingerprint of what the user approved; check-evals.sh --passed compares against it
+    let evals = dir.join("evals.md");
+    if status == "ready" && evals.exists() {
+        let hex = fingerprint(&evals).map_err(|e| format!("{}: {e}", evals.display()))?;
+        let fp = dir.join(".evals.sha256");
+        fs::write(&fp, format!("{hex}\n")).map_err(|e| format!("{}: {e}", fp.display()))?;
+    }
+
+    let board = board_path(root);
+    if let Some(number) = number.filter(|_| board.exists()) {
+        set_board_row(&board, &number, status).map_err(|e| format!("{}: {e}", board.display()))?;
+    }
+    Ok(())
+}
+
+/// `NNN` when `dir` is a `specs/tickets/NNN-*` folder.
+fn ticket_number(dir: &Path) -> Option<String> {
+    let dir: PathBuf = dir.components().collect();
+    let name = dir.file_name()?.to_str()?;
+    let parent = dir.parent()?.file_name()?.to_str()?;
+    (parent == "tickets" && is_ticket_name(name)).then(|| name[..3].to_string())
+}
+
+/// Rewrites the status cell of row `number` under an exclusive lock: several agents flip rows at once.
+fn set_board_row(board: &Path, number: &str, status: &str) -> io::Result<()> {
+    let mut file = OpenOptions::new().read(true).write(true).open(board)?;
+    file.lock()?; // released when `file` is dropped
+    let mut text = String::new();
+    file.read_to_string(&mut text)?;
+    let row = Regex::new(&format!(
+        r"^(\|\s*{number}\s*\|.*?\|\s*)\w+(\s*\|\s*\w+\s*\|)"
+    ))
+    .map_err(io::Error::other)?;
+    let replacement = format!("${{1}}{status}${{2}}");
+    let updated: Vec<String> = text
+        .split('\n')
+        .map(|line| row.replace(line, replacement.as_str()).into_owned())
+        .collect();
+    file.seek(SeekFrom::Start(0))?;
+    file.write_all(updated.join("\n").as_bytes())?;
+    let end = file.stream_position()?;
+    file.set_len(end)?;
+    Ok(())
 }
