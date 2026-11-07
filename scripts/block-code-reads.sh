@@ -31,7 +31,7 @@ paths='\.\./|(^|[^A-Za-z0-9])[Ff][Ii][Ll][Ee]:|(^|[ =:"'"'"'<>])\.?/?(src|app|li
 # RD (1 for a word that holds an unquoted >, a redirection to a file) and R=1 when an unquoted < appears (a redirection or <(...)
 # reads a file). A quote or backslash the shell reads differently only adds words here, which makes a stage less plain, never more.
 words() {
-  local s=$1 w= q= c i have=0 rd=0; W=(); RD=(); R=0
+  local s=$1 w='' q='' c i have=0 rd=0; W=(); RD=(); R=0
   for ((i = 0; i < ${#s}; i++)); do
     c=${s:i:1}
     if [ -n "$q" ]; then
@@ -54,7 +54,7 @@ words() {
 # The text after each | of $1 (STG), cut at | ; & and newlines outside quotes, so a quoted "a|b" is not split in two and the file
 # after it stays an operand of its stage. Quotes stay in the text; words() removes them.
 stages() {
-  local s=$1 w= q= c i after=0; STG=()
+  local s=$1 w='' q='' c i after=0; STG=()
   for ((i = 0; i < ${#s}; i++)); do
     c=${s:i:1}
     if [ -n "$q" ]; then
@@ -77,7 +77,7 @@ stages() {
 # fail the check, so the stage counts as reading files.
 # Best effort for sed: a script with an r, R, w, W or e command after an address, or an s command with an e or w flag, is rejected too.
 plain_stage() {
-  local name t i k ch d e sflags vals= expect= ops=0 max=0 pat=0 scripts= op1= longok redir="^[0-9&]*>>?\$"
+  local name t i k ch d e sflags vals='' expect='' ops=0 max=0 pat=0 scripts='' op1='' longok redir="^[0-9&]*>>?\$"
   longok='^--(ignore-case|line-number|only-matching|extended-regexp|fixed-strings|count|invert-match|word-regexp|quiet|silent|color(=[a-z]+)?|lines=[+-]?[0-9]+|bytes=[0-9]+|numeric-sort|reverse|unique|raw-output|compact-output|slurp|null-input)$'
   words "$1"; ((R)) && return 1
   name=${W[0]:-}
@@ -114,9 +114,9 @@ plain_stage() {
   ((pat)) || scripts+=" $op1"
   if [ "$name" = sed ]; then
     [[ $scripts =~ (^|[\;\{\}[:space:]])(/[^/]*/|[0-9\$,!])*[[:space:]]*[rRwWe]([[:space:]]|[A-Za-z0-9_./~-]) ]] && return 1
-    for d in / '|' '#' , : @ '!' %; do   # s<d>re<d>replacement<d>flags: a flag e runs the result, w writes it to a file
+    for d in / '|' '#' ',' : @ '!' %; do   # s<d>re<d>replacement<d>flags: a flag e runs the result, w writes it to a file
       e=$d; [ "$d" = '|' ] && e='\|'   # an unescaped | is alternation, which would match everything
-      sflags="s$e[^$d]*$e[^$d]*$e[0-9gpiImM]*[ewW]"
+      sflags="s${e}[^${d}]*${e}[^${d}]*${e}[0-9gpiImM]*[ewW]"
       [[ $scripts =~ $sflags ]] && return 1
     done
   fi
