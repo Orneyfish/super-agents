@@ -8,7 +8,8 @@ grep -q worker <<<"$in" || exit 0                                       # cheap 
 [ "$(get agent_type <<<"$in")" = super-agents:worker ] || exit 0
 skip() { emit message "super-agents: worker gate skipped ($1); nothing checked that its evals pass."; exit 0; }
 cwd=$(get cwd <<<"$in"); st="$cwd/.job/status.json"; [ -f "$st" ] || skip "no $st"
-dir=$(get dir <"$st"); [[ $dir == /* ]] || dir="$cwd/$dir"; [ -d "$dir" ] || skip "ticket dir $dir does not exist"
+drive='^[A-Za-z]:[/\\]'   # C:/... or C:\...: a native Windows program stored it, and it is absolute
+dir=$(get dir <"$st"); [[ $dir == /* || $dir =~ $drive ]] || dir="$cwd/$dir"; [ -d "$dir" ] || skip "ticket dir $dir does not exist"
 [ "$(get phase <"$st")" = blocked ] && exit 0
 out=$("$(dirname "$0")/check-evals.sh" "$dir" --passed) && exit 0
 n=$(cat "$cwd/.job/gate_blocks" 2>/dev/null || echo 0)
