@@ -24,14 +24,24 @@ if [ ! -x "$bin" ]; then
   want=$(awk -v f="$name" '$2 == f || $2 == "*" f { print $1 }' "$root/dist/checksums/v$ver.txt" 2>/dev/null)
   [ -n "$want" ] || { echo "super-agents: no checksum for $name in dist/checksums/v$ver.txt; build it with: $build" >&2; exit 3; }
   url="${SUPER_AGENTS_CORE_URL:-https://github.com/Orneyfish/super-agents/releases/download/v$ver}/$name"
-  mkdir -p "$dir" && tmp=$(mktemp "$dir/.download.XXXXXX") || exit 3
-  if ! curl -fsSL --retry 2 -o "$tmp" "$url"; then
-    rm -f "$tmp"; echo "super-agents: could not download $url; build it with: $build" >&2; exit 3
+  mkdir -p "$dir" || exit 3
+  # Hooks run this on every tool call or stop, so a failed download must not be paid for again and again: it is not retried for
+  # 10 minutes (SA_NATIVE_FORCE=1, set by 'super-agents install-core', retries at once), and curl gives up instead of hanging.
+  failed="$dir/.last-failure"
+  if [ -z "${SA_NATIVE_FORCE:-}" ] && [ -n "$(find "$failed" -mmin -10 2>/dev/null)" ]; then
+    echo "super-agents: not downloading sa-core again, the last try failed less than 10 minutes ago (run 'super-agents install-core' to retry now); build it with: $build" >&2; exit 3
+  fi
+  find "$dir" -name '.download.*' -mmin +60 -delete 2>/dev/null   # left by runs that were killed
+  tmp=$(mktemp "$dir/.download.XXXXXX") || exit 3
+  trap 'rm -f "$tmp"' EXIT
+  if ! curl -fsSL --retry 1 --connect-timeout 5 --max-time "${SUPER_AGENTS_CORE_TIMEOUT:-20}" -o "$tmp" "$url"; then
+    rm -f "$tmp"; touch "$failed"; echo "super-agents: could not download $url; build it with: $build" >&2; exit 3
   fi
   got=$( { sha256sum "$tmp" 2>/dev/null || shasum -a 256 "$tmp"; } | awk '{print $1}')
   if [ "$got" != "$want" ]; then
-    rm -f "$tmp"; echo "super-agents: checksum mismatch for $url (got $got, want $want); not running it" >&2; exit 3
+    rm -f "$tmp"; touch "$failed"; echo "super-agents: checksum mismatch for $url (got $got, want $want); not running it" >&2; exit 3
   fi
   chmod +x "$tmp" && mv -f "$tmp" "$bin" || exit 3
+  rm -f "$failed"; trap - EXIT
 fi
 exec "$bin" "$@"
