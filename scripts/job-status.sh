@@ -7,9 +7,9 @@ here="$(cd "$(dirname "$0")" && pwd)"; name=""; [ "${1:-}" = --name ] && { name=
 f=".job/status${name:+-$name}.json"; now=$(date -u +%FT%TZ); mkdir -p .job
 if [ "${1:-}" = init ]; then
   dir=$(cd "${3:?ticket dir}" 2>/dev/null && pwd || echo "$3")   # absolute, so the gate does not depend on whose cwd it runs in
-  "$here/hookio.py" status-init "${2:?ticket}" "$dir" "${4:?phase}" "$now" "$name" > "$f.tmp" && mv "$f.tmp" "$f"
+  "$here/sa-native.sh" hookio status-init "${2:?ticket}" "$dir" "${4:?phase}" "$now" "$name" > "$f.tmp" && mv "$f.tmp" "$f"
 else
   [ -f "$f" ] || { echo "run 'job-status.sh init <NNN> <dir> <phase>' first" >&2; exit 1; }
-  "$here/hookio.py" status-set "$f" "${1:?phase}" "${2:-}" "$now" > "$f.tmp" && mv "$f.tmp" "$f"
+  "$here/sa-native.sh" hookio status-set "$f" "${1:?phase}" "${2:-}" "$now" > "$f.tmp" && mv "$f.tmp" "$f"
 fi
 if [ -z "$name" ] && { [ "${1:-}" = building ] || [ "${1:-}" = init ]; }; then rm -f .job/gate_blocks; fi   # a new build round (or a restarted worker) gets a fresh worker-gate block count

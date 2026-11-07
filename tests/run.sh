@@ -4,22 +4,27 @@
 # Usage: tests/run.sh      Exit 0 = all passed.
 set -u
 R="$(cd "$(dirname "$0")/.." && pwd)"; X="$R/scripts"; T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
+BOARD="$R/bin/super-agents board"   # the board command under test
+HOOKIO="$X/sa-native.sh hookio"     # the hook scripts' JSON helper under test
+# the native helper (core/) must be built for the board tests; cargo is a no-op when it is up to date
+if command -v cargo >/dev/null; then (cd "$R/core" && cargo build -q --release --locked) || exit 1; fi
 pass=0; fail=0; LAST=""
-# the plugin must not need jq: any script that calls it fails loudly against this shim
-mkdir -p "$T/nojq"; printf '#!/bin/sh\necho "jq was called, but the plugin must work without it" >&2\nexit 97\n' > "$T/nojq/jq"; chmod +x "$T/nojq/jq"; PATH="$T/nojq:$PATH"
-jget() { "$X/hookio.py" get "$1"; }                                   # value of a path in the JSON on stdin
-js() { python3 -c 'import json,sys;print(json.dumps(dict(a.split("=",1) for a in sys.argv[1:])))' "$@"; }   # js k=v ... : a flat JSON object of strings
+# the plugin must not need jq or python3: any script that calls one fails loudly against these shims
+mkdir -p "$T/nojq"; for c in jq python3; do printf '#!/bin/sh\necho "%s was called, but the plugin must work without it" >&2\nexit 97\n' $c > "$T/nojq/$c"; chmod +x "$T/nojq/$c"; done; PATH="$T/nojq:$PATH"
+jget() { $HOOKIO get "$1"; }                                   # value of a path in the JSON on stdin
+js() { local o="" kv; for kv; do o+="${o:+, }\"${kv%%=*}\": \"${kv#*=}\""; done; echo "{$o}"; }   # js k=v ... : a flat JSON object of strings (values without " or \)
 t()   { local n=$1 want=$2; shift 2; LAST=$("$@" 2>&1); local rc=$?; [ "$rc" = "$want" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL $n: exit $rc, wanted $want"; echo "$LAST" | head -4; }; }
 has() { grep -qF -- "$2" <<<"$LAST" && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL $1: output lacks '$2'"; echo "$LAST" | head -4; }; }
 hasnt() { grep -qF -- "$2" <<<"$LAST" && { fail=$((fail+1)); echo "FAIL $1: output has '$2'"; } || pass=$((pass+1)); }
 silent() { [ -z "$LAST" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL $1: expected no output, got: $LAST" | head -3; }; }
 # portable between GNU and BSD/macOS userlands: in-place sed, "N minutes ago" timestamp, backdated mtime
 sedi() { local f=${!#}; sed -i.bak "$@" && rm -f "$f.bak"; }
-iso() { python3 -c 'import datetime as d,sys;print((d.datetime.now(d.timezone.utc)-d.timedelta(minutes=float(sys.argv[1]))).strftime("%Y-%m-%dT%H:%M:%SZ"))' "$1"; }
-age() { python3 -c 'import os,sys,time;t=time.time()-float(sys.argv[2])*3600;os.utime(sys.argv[1],(t,t))' "$1" "$2"; }
+at()  { date -r "$1" "$2" 2>/dev/null || date -d "@$1" "$2"; }      # format epoch $1: BSD date, then GNU date
+iso() { TZ=UTC at $(( $(date +%s) - $1 * 60 )) +%Y-%m-%dT%H:%M:%SZ; }  # $1 whole minutes ago, UTC
+age() { touch -t "$(at $(( $(date +%s) - $2 * 3600 )) +%Y%m%d%H%M.%S)" "$1"; }   # mtime $2 whole hours ago
 
 # ---- hookio.py (the JSON glue that replaces jq)
-H=$X/hookio.py; eq() { [ "$2" = "$3" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL $1: got '$2', wanted '$3'"; }; }
+H=$HOOKIO; eq() { [ "$2" = "$3" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL $1: got '$2', wanted '$3'"; }; }
 J='{"a":{"b":"x y"},"n":5,"o":{"k":[1]},"z":null,"t":true}'
 eq hookio-get-nested "$(echo "$J" | $H get a.b)" "x y";            eq hookio-get-number "$(echo "$J" | $H get n)" 5
 eq hookio-get-object "$(echo "$J" | $H get o)" '{"k":[1]}';        eq hookio-get-bool "$(echo "$J" | $H get t)" true
@@ -34,6 +39,12 @@ t hookio-emit-deny 0 $H emit deny why;                              eq hookio-em
 t hookio-emit-context 0 $H emit context hi;                         eq hookio-emit-context "$(echo "$LAST" | $H get hookSpecificOutput.additionalContext)/$(echo "$LAST" | $H get hookSpecificOutput.hookEventName)" "hi/SessionStart"
 t hookio-emit-message 0 $H emit message hi;                         eq hookio-emit-message "$(echo "$LAST" | $H get systemMessage)" hi; eq hookio-emit-message-top-level "$(echo "$LAST" | $H get hookSpecificOutput)" ""
 t hookio-usage 1 $H
+# characterization (kept when hookio moves to sa-core): the exact bytes Claude Code parses, and the key order
+eq hookio-emit-bytes "$($H emit block 'a "b" é')" "$(printf '{\n  "decision": "block",\n  "reason": "a \\"b\\" \\u00e9"\n}')"
+eq hookio-get-compact "$(echo '{"o":{"b":1,"a":"é"}}' | $H get o)" '{"b":1,"a":"\u00e9"}'
+eq hookio-status-init "$($H status-init 001 tickets/001-x building 2026-11-07T10:15:00Z a)" "$(printf '{\n  "ticket": "001",\n  "dir": "tickets/001-x",\n  "phase": "building",\n  "started": "2026-11-07T10:15:00Z",\n  "updated": "2026-11-07T10:15:00Z",\n  "note": "",\n  "agent": "a"\n}')"
+printf '{"z": 1, "phase": "x", "ticket": "001"}' > "$T/st.json"
+eq hookio-status-set "$($H status-set "$T/st.json" testing n 2026-11-07T10:16:00Z)" "$(printf '{\n  "z": 1,\n  "phase": "testing",\n  "ticket": "001",\n  "note": "n",\n  "updated": "2026-11-07T10:16:00Z"\n}')"
 
 # ---- fixture: git repo with three tickets
 cd "$T" && mkdir repo && cd repo && git init -q -b main && git config user.email t@t && git config user.name t && echo x > f && git add . && git commit -qm init
@@ -45,18 +56,34 @@ printf '# Board\n| # | Title | Status | Mode | Runs |\n|---|---|---|---|---|\n| 
 D=specs/tickets/001-found
 
 # ---- board.py
-t board-ok 0 $X/board.py check;                                  has board-ok "OK: board (3 tickets)"
-sedi 's/waits for 001/waits for 009/' specs/tickets/BOARD.md; t board-missing-dep 1 $X/board.py check; has board-missing-dep "not on the board"; sedi 's/waits for 009/waits for 001/' specs/tickets/BOARD.md
-cp specs/tickets/BOARD.md B.bak; sedi 's/| 001 | Found | draft | team | alongside |/| 001 | Found | draft | team | waits for 002: x |/' specs/tickets/BOARD.md; t board-cycle 1 $X/board.py check; has board-cycle "dependency cycle"; cp B.bak specs/tickets/BOARD.md
-t set-ticket 0 $X/board.py set 001 ready;                         grep -q '| 001 | Found | ready' specs/tickets/BOARD.md && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL set-ticket: board row"; }
-t set-dir-syncs-row 0 $X/board.py set specs/tickets/002-reset ready; t board-still-ok 0 $X/board.py check
-t set-bad-status 1 $X/board.py set 001 wip
-mkdir -p sub/deep; t set-from-subdir 0 bash -c "cd sub/deep && $X/board.py set 001 building"; t board-ok-2 0 $X/board.py check
+t board-ok 0 $BOARD check;                                  has board-ok "OK: board (3 tickets)"
+sedi 's/waits for 001/waits for 009/' specs/tickets/BOARD.md; t board-missing-dep 1 $BOARD check; has board-missing-dep "not on the board"; sedi 's/waits for 009/waits for 001/' specs/tickets/BOARD.md
+cp specs/tickets/BOARD.md B.bak; sedi 's/| 001 | Found | draft | team | alongside |/| 001 | Found | draft | team | waits for 002: x |/' specs/tickets/BOARD.md; t board-cycle 1 $BOARD check; has board-cycle "dependency cycle"; cp B.bak specs/tickets/BOARD.md
+t set-ticket 0 $BOARD set 001 ready;                         grep -q '| 001 | Found | ready' specs/tickets/BOARD.md && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL set-ticket: board row"; }
+t set-dir-syncs-row 0 $BOARD set specs/tickets/002-reset ready; t board-still-ok 0 $BOARD check
+t set-bad-status 1 $BOARD set 001 wip
+mkdir -p sub/deep; t set-from-subdir 0 bash -c "cd sub/deep && $BOARD set 001 building"; t board-ok-2 0 $BOARD check
+# characterization (kept when the board moves to sa-core): the main checkout, every kind of row problem,
+# an inserted Status line, a fingerprint only for 'ready', an unknown ticket
+t board-root 0 bash -c "cd sub/deep && $BOARD root";               eq board-root "$(cd "$LAST" && pwd -P)" "$(pwd -P)"
+mkdir -p specs/tickets/004-extra; cp specs/tickets/BOARD.md B.bak
+printf '# Board\n| # | Title | Status | Mode | Runs |\n|---|---|---|---|---|\n| 001 | Found | ready | team | alongside |\n| 001 | Again | building | duo | later |\n| 005 | Gone | draft | solo | alongside |\n' > specs/tickets/BOARD.md
+t board-problems 1 $BOARD check
+for m in "FAIL: duplicate id 001" "001: mode must be solo or team" "001: Runs must be 'alongside' or 'waits for NNN: why'" "005: no folder specs/tickets/005-*" "003-profile has no board row" "004-extra has no board row"; do
+  has "board-problems: $m" "$m"
+done
+cp B.bak specs/tickets/BOARD.md; rmdir specs/tickets/004-extra
+mkdir -p specs/feat; printf '# Feat\nbody\n' > specs/feat/RD.md
+t set-inserts-status 0 $BOARD set specs/feat building
+[ "$(cat specs/feat/RD.md)" = "$(printf '# Feat\n\n**Status:** building\nbody')" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL set-inserts-status: RD.md is: $(cat specs/feat/RD.md)"; }
+[ ! -e specs/feat/.evals.sha256 ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL set-inserts-status: fingerprint written for 'building'"; }
+rm -rf specs/feat
+t set-unknown 1 $BOARD set 009 ready;                             has set-unknown "no such ticket or directory: 009"
 
 # ---- check-evals.sh
 t eval-structure 0 $X/check-evals.sh $D
 t eval-ready-while-building 1 $X/check-evals.sh $D --ready;       has eval-ready-while-building "must approve"
-$X/board.py set $D ready >/dev/null; t eval-ready 0 $X/check-evals.sh $D --ready
+$BOARD set $D ready >/dev/null; t eval-ready 0 $X/check-evals.sh $D --ready
 t eval-passed-no-results 1 $X/check-evals.sh $D --passed;          has eval-passed-no-results "no row"
 mkdir -p $D/evidence; echo ok > $D/evidence/a.png
 printf '| eval | result | evidence |\n|---|---|---|\n| E1 | pass | evidence/a.png: ok |\n| E2 | fail | slow |\n' > $D/results.md
@@ -94,7 +121,7 @@ cp $T/rd.bak $D/RD.md; printf '\nUsers can add a `TODO` item.\n' >> $D/RD.md; t 
 cp $T/rd.bak $D/RD.md
 # H3: a ticket with no approval fingerprint anywhere cannot pass (a worker could have deleted or never had one)
 # L2: the tester prints PASS, the gate takes it in any case. L5: '## E2E ...' is not an eval, and an id never keeps its colon
-fp() { python3 -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$1/evals.md" > "$1/.evals.sha256"; }
+fp() { "$X/sa-native.sh" fingerprint "$1/evals.md" > "$1/.evals.sha256"; }
 mkfix() { mkdir -p $1/evidence; echo ok > $1/evidence/E1.txt
   printf '# t\n\n**Status:** building\n**Risk:** low\n\n## Functional requirements\n- FR-1: a\n\nUI: no\n' > $1/RD.md
   printf '# E\n\n## Setup\nx\n\n## E1: a\n- covers: FR-1\n- check: c\n- pass when: p\n- fail when: f\n' > $1/evals.md
@@ -173,41 +200,47 @@ LAST=$(echo "{\"cwd\":\"$T/np\",\"agent_type\":\"super-agents:worker\"}" | $X/wo
 cd $T/repo || exit
 
 # ---- board.py scan (watchdog)
-$X/board.py set 001 building >/dev/null
-t scan-no-heartbeat 0 $X/board.py scan;                           has scan-no-heartbeat "no status file"
+$BOARD set 001 building >/dev/null
+t scan-no-heartbeat 0 $BOARD scan;                           has scan-no-heartbeat "no status file"
 mkdir -p .job; js ticket=001 phase=testing started="$(iso 3)" updated="$(iso 2)" note="" agent=a > .job/status-001-a.json
-t scan-healthy 0 $X/board.py scan;                                silent scan-healthy
+t scan-healthy 0 $BOARD scan;                                silent scan-healthy
 js ticket=001 phase=building started="$(iso 41)" updated="$(iso 40)" note="" agent=a > .job/status-001-a.json
-t scan-silent 0 $X/board.py scan;                                 has scan-silent "silent for"
+t scan-silent 0 $BOARD scan;                                 has scan-silent "silent for"
 # a worker in testing/reviewing is blocked on its own tester/reviewer and cannot heartbeat: it gets wait_min (45), not stale_min (15)
 js ticket=001 phase=testing started="$(iso 41)" updated="$(iso 40)" note="" agent=a > .job/status-001-a.json
-t scan-waiting-ok 0 $X/board.py scan;                             silent scan-waiting-ok
+t scan-waiting-ok 0 $BOARD scan;                             silent scan-waiting-ok
 js ticket=001 phase=testing started="$(iso 51)" updated="$(iso 50)" note="" agent=a > .job/status-001-a.json
-t scan-waiting-too-long 0 $X/board.py scan;                       has scan-waiting-too-long "silent for"
+t scan-waiting-too-long 0 $BOARD scan;                       has scan-waiting-too-long "silent for"
 js ticket=001 phase=building started="$(iso 41)" updated="$(iso 40)" note="" agent=a > .job/status-001-a.json
-mkdir -p .super-agents; printf 'ignore=001\n' > .super-agents/watchdog.conf; t scan-ignore 0 $X/board.py scan; silent scan-ignore
+mkdir -p .super-agents; printf 'ignore=001\n' > .super-agents/watchdog.conf; t scan-ignore 0 $BOARD scan; silent scan-ignore
 js ticket=001 phase=blocked started="$(iso 2)" updated="$(iso 1)" note="db down" agent=a > .job/status-001-a.json; : > .super-agents/watchdog.conf
-t scan-blocked 0 $X/board.py scan;                                has scan-blocked "blocked: db down"
+t scan-blocked 0 $BOARD scan;                                has scan-blocked "blocked: db down"
 # L6: one unreadable status file or one bad number in watchdog.conf must not hide the other problems
-$X/board.py set 003 building >/dev/null
+$BOARD set 003 building >/dev/null
 js ticket=001 phase=building agent=a > .job/status-001-a.json
-t scan-malformed 0 $X/board.py scan;                              has scan-malformed "001 status file unreadable"; has scan-malformed-others "003 is 'building'"
+t scan-malformed 0 $BOARD scan;                              has scan-malformed "001 status file unreadable"; has scan-malformed-others "003 is 'building'"
 printf '{not json' > .job/status-001-a.json
-t scan-badjson 0 $X/board.py scan;                                has scan-badjson "status-001-a.json unreadable"
+t scan-badjson 0 $BOARD scan;                                has scan-badjson "status-001-a.json unreadable"
 js ticket=001 phase=building started="$(iso 41)" updated="$(iso 40)" note="" agent=a > .job/status-001-a.json; printf 'stale_min=abc\n' > .super-agents/watchdog.conf
-t scan-bad-conf 0 $X/board.py scan;                               has scan-bad-conf "silent for"
+t scan-bad-conf 0 $BOARD scan;                               has scan-bad-conf "silent for"
 # PR review: nan/inf thresholds fall back to the defaults, one bad file does not hide its siblings, a finished ticket's stale file is not a problem
 printf 'stale_min=nan\nslow_min=inf\n' > .super-agents/watchdog.conf
-t scan-nonfinite 0 $X/board.py scan;                              has scan-nonfinite "silent for"
+t scan-nonfinite 0 $BOARD scan;                              has scan-nonfinite "silent for"
 : > .super-agents/watchdog.conf
 js ticket=001 phase=building agent=a > .job/status-001-a.json
 js ticket=001 phase=blocked started="$(iso 6)" updated="$(iso 5)" note="db down" agent=b > .job/status-001-b.json
-t scan-malformed-sibling 0 $X/board.py scan;                      has scan-malformed-sibling "blocked: db down"; has scan-malformed-sibling-flag "unreadable"
+t scan-malformed-sibling 0 $BOARD scan;                      has scan-malformed-sibling "blocked: db down"; has scan-malformed-sibling-flag "unreadable"
 rm -f .job/status-001-b.json; printf 'ignore=001,003\n' > .super-agents/watchdog.conf; printf '{broken' > .job/status-001-a.json
-t scan-stale-unreadable 0 $X/board.py scan;                       silent scan-stale-unreadable
+t scan-stale-unreadable 0 $BOARD scan;                       silent scan-stale-unreadable
 : > .super-agents/watchdog.conf
-$X/board.py set 003 ready >/dev/null
+$BOARD set 003 ready >/dev/null
 
+js ticket=001 phase=building started="$(iso 70)" updated="$(iso 2)" note="" agent=a > .job/status-001-a.json
+t scan-slow 0 $BOARD scan;                                        has scan-slow "PROBLEM 001 slow: building for 70 min"
+rm .job/status-001-a.json; mkdir -p .claude/worktrees/w1/.job
+js ticket=001 phase=building started="$(iso 41)" updated="$(iso 40)" note="" agent= > .claude/worktrees/w1/.job/status.json
+t scan-worktree 0 $BOARD scan;                                    has scan-worktree "PROBLEM 001 worker silent for 40 min in phase 'building'"
+rm -rf .claude
 # L1: a bad interval_min falls back to 10 minutes (with a warning) instead of busy-looping or killing the watchdog
 mkdir -p $T/fs; printf '#!/bin/sh\necho "SLEEP $1"\nkill $PPID\n' > $T/fs/sleep; chmod +x $T/fs/sleep
 wl() { printf 'interval_min=%s\n' "$1" > .super-agents/watchdog.conf; LAST=$(PATH="$T/fs:$PATH" $X/watchdog-loop.sh 2>&1); }
@@ -265,11 +298,14 @@ t commit-tickets-yes 0 bash -c "echo y | $X/commit-tickets.sh"
 [ -z "$(git status --porcelain -- specs/tickets CLAUDE.md)" ] && git cat-file -e HEAD:specs/tickets/003-profile/late.md && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL commit-tickets did not commit the new ticket file"; }
 t commit-tickets-clean 0 $X/commit-tickets.sh; has commit-tickets-clean "nothing to commit"
 echo again >> specs/tickets/003-profile/late.md; t commit-tickets-yes-flag 0 $X/commit-tickets.sh -y; [ -z "$(git status --porcelain -- specs/tickets)" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL commit-tickets -y left changes"; }
-git switch -q main; echo more >> specs/tickets/003-profile/late.md; t commit-tickets-on-main 1 $X/commit-tickets.sh -y; has commit-tickets-on-main "integration branch"; git checkout -q -- specs/tickets; git switch -q feat/y
+git switch -q main; echo more >> specs/tickets/003-profile/late.md; t commit-tickets-on-main 1 $X/commit-tickets.sh -y; has commit-tickets-on-main "integration branch"; rm -f specs/tickets/003-profile/late.md; git switch -q feat/y
+# the tests above switch branches: they must end where the tests below expect to be, not fail quietly on a stray file
+[ "$(git branch --show-current)" = feat/y ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL the commit-tickets tests left the fixture repo on '$(git branch --show-current)', not feat/y"; }
 git switch -q main; git branch -q -D feat/y
 
 # ---- hooks
-ftu() { LAST=$(python3 -c 'import json,sys;print(json.dumps({"cwd":sys.argv[3],"agent_type":sys.argv[1],"tool_name":"Bash","tool_input":{"command":sys.argv[2]}}))' "$1" "$2" "$T" | $X/block-code-reads.sh); }
+jstr() { local s=${1//\\/\\\\}; s=${s//\"/\\\"}; printf '"%s"' "${s//$'\n'/\\n}"; }   # $1 as a JSON string (the tests need no other escapes)
+ftu() { LAST=$(printf '{"cwd": %s, "agent_type": %s, "tool_name": "Bash", "tool_input": {"command": %s}}' "$(jstr "$T")" "$(jstr "$1")" "$(jstr "$2")" | $X/block-code-reads.sh); }
 ftu "" "cat src/app.py"; silent hook-main-agent-free
 ftu super-agents:builder "grep -r x ."; silent hook-other-agent-free
 ftu super-agents:first-time-user "cat src/app.py"; has hook-ftu-cat-denied '"permissionDecision": "deny"'
@@ -291,7 +327,7 @@ for c in 'curl -s localhost:3000/health | grep ok' 'curl -s localhost:3000/ | he
 done
 ftu super-agents:first-time-user "echo hi | cat f"; has hook-ftu-reason-names-match "'cat'"
 # L7: browser tools are checked too: the app's URLs are fine, file: URLs are not
-ftb() { LAST=$(python3 -c 'import json,sys;print(json.dumps({"cwd":sys.argv[2],"agent_type":"super-agents:first-time-user","tool_name":"mcp__claude-in-chrome__navigate","tool_input":json.loads(sys.argv[1])}))' "$1" "$T" | $X/block-code-reads.sh); }
+ftb() { LAST=$(printf '{"cwd": %s, "agent_type": "super-agents:first-time-user", "tool_name": "mcp__claude-in-chrome__navigate", "tool_input": %s}' "$(jstr "$T")" "$1" | $X/block-code-reads.sh); }
 ftb '{"url":"http://localhost:3000/"}'; silent hook-ftu-browser-allowed
 ftb '{"url":"file:///home/me/project/src/app.py"}'; has hook-ftu-browser-file-denied '"permissionDecision": "deny"'
 ftb '{"url":"FILE:///home/me/project/src/app.py"}'; has hook-ftu-browser-FILE-denied '"permissionDecision": "deny"'
@@ -333,7 +369,7 @@ done
 for c in 'echo done.' './launcher.sh add "a . b"' 'curl -d "x=$(date)" http://localhost:3000/' 'curl -s x > out.txt' './launcher.sh list | sort | wc -l' 'curl -s http://localhost:3000/ -d "<a>1</a>"'; do
   ftu super-agents:first-time-user "$c"; silent "hook-ftu-allowed: $c"
 done
-python3 -c 'import json,sys;sys.exit("mcp__claude-in-chrome__" not in json.load(open(sys.argv[1]))["hooks"]["PreToolUse"][0]["matcher"])' "$R/hooks/hooks.json" && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL hooks.json matcher does not cover the browser tools"; }
+$HOOKIO get hooks.PreToolUse < "$R/hooks/hooks.json" | grep -qE '"matcher":"[^"]*mcp__claude-in-chrome__' && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL hooks.json matcher does not cover the browser tools"; }
 LAST=$(echo "{\"cwd\":\"$T/np\"}" | $X/session-start.sh); has session-agreement "super-agents plugin is active"
 # L4: the active-loop note lists dir and round
 mkdir -p $T/p6/.super-agents; git -C $T/p6 init -q -b main; touch $T/p6/review.md; printf -- '---\ndir: specs/x\nactive: true\nround: 2\n---\n' > $T/p6/.super-agents/state.md
@@ -342,7 +378,7 @@ LAST=$(echo "{\"cwd\":\"$T/repo\"}" | $X/session-start.sh); has session-nudge "/
 # #5: the session id goes into the context, so the review-loop can record who started the loop
 LAST=$(echo "{\"cwd\":\"$T/repo\",\"session_id\":\"sessZ\"}" | $X/session-start.sh); has session-start-id "This session's id is sessZ"
 LAST=$(echo "{\"cwd\":\"$T/repo\"}" | $X/session-start.sh); hasnt session-start-no-id "session's id"
-t session-no-python 0 env PATH="$T/nopath" "$BASH" $X/session-start.sh;  has session-no-python "python3 is not installed"   # hooks need python3; say so instead of silently doing nothing
+t session-no-core 0 env SUPER_AGENTS_CORE="$T/nope" $X/session-start.sh;  has session-no-core "sa-core is not available"   # hooks need sa-core; say so instead of silently doing nothing
 
 
 # ---- AGENTS.md is refreshed when present, never created
@@ -354,7 +390,7 @@ B="$R/bin/super-agents"; ln -s "$B" $T/bin/super-agents; SA=$T/bin/super-agents
 t sa-usage 2 $SA;                                                   has sa-usage "usage: super-agents"
 t sa-template 0 $SA template RD.md;                                 has sa-template "**Status:** draft"
 t sa-template-traversal 2 $SA template ../README.md
-cd $T/repo || exit; $X/board.py set 001 ready >/dev/null; $X/board.py set 002 ready >/dev/null; $X/board.py set 003 ready >/dev/null
+cd $T/repo || exit; $BOARD set 001 ready >/dev/null; $BOARD set 002 ready >/dev/null; $BOARD set 003 ready >/dev/null
 t sa-board 0 $SA board check;                                       has sa-board "OK: board"
 t sa-check-evals 0 $SA check-evals specs/tickets/003-profile --ready
 t sa-link-skills 0 $SA link-skills $T/skills-out;                   [ "$(ls $T/skills-out | wc -l)" = "$(ls $R/skills | wc -l)" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL link-skills count"; }
@@ -368,7 +404,7 @@ t sa-link-skills-again 0 $SA link-skills $T/skills-out;             hasnt sa-lin
 git init -q -b main $T/sub && git -C $T/sub -c user.email=t@t -c user.name=t commit -q --allow-empty -m s
 git init -q -b main $T/sup && (cd $T/sup && git -c protocol.file.allow=always submodule add -q ../sub sub)
 mkdir -p $T/sup/sub/specs/tickets; printf '# Board\n| # | Title | Status | Mode | Runs |\n|---|---|---|---|---|\n' > $T/sup/sub/specs/tickets/BOARD.md
-t board-in-submodule 0 bash -c "cd $T/sup/sub && $X/board.py check";  has board-in-submodule "OK: board"
+t board-in-submodule 0 bash -c "cd $T/sup/sub && $BOARD check";  has board-in-submodule "OK: board"
 mkfix $T/sup/sub/f; fp $T/sup/sub/f
 (cd $T/sup/sub && git add -A f >/dev/null && git -c user.email=t@t -c user.name=t commit -qm f && git worktree add -q $T/subwt -b w)
 rm -f $T/subwt/f/.evals.sha256; sedi 's/- fail when: f/- fail when: loosened/' $T/subwt/f/evals.md
@@ -395,7 +431,6 @@ ok() { pass=$((pass+1)); }; bad() { fail=$((fail+1)); echo "FAIL $*"; }
 for f in "$R"/agents/*.md "$R"/skills/*/SKILL.md; do
   grep -qE 'job-status\.sh|board\.py' "$f" && bad "$f names job-status.sh or board.py directly; use 'super-agents job-status' / 'super-agents board'" || ok
 done
-for py in "$X"/*.py; do python3 -B -c 'import ast,sys;ast.parse(open(sys.argv[1]).read())' "$py" && ok || bad "scripts/$(basename "$py") does not parse"; done
 # #7: only the job that publishes may write to the repository; the job that runs the tests gets a read-only token
 [ "$(grep -c 'contents: write' "$R/.github/workflows/release.yml")" = 1 ] && awk '/^  [a-z]+:$/{job=$1} /contents: write/{print job}' "$R/.github/workflows/release.yml" | grep -qx 'publish:' && ok || bad "release.yml: contents: write must appear once, in the publish job only"
 # #7: prompt changes with no behaviour to run: guard them against being undone (the router cannot commit tickets; the merger blocks only on a running team; the reviewer is given its base)
@@ -403,9 +438,12 @@ grep -q 'super-agents commit-tickets' "$R/agents/router.md" && ok || bad "router
 grep -q "building.*team" "$R/agents/merger.md" && grep -q 'stray files' "$R/agents/merger.md" && ok || bad "merger.md no longer tells a running team's files from stray files"
 grep -q '^base: ' "$R/skills/review-loop/SKILL.md" && grep -q '`base` and `checkpoint`' "$R/skills/review-loop/SKILL.md" && grep -q '`base` in round 1' "$R/agents/reviewer.md" && ok || bad "the review-loop no longer records base or passes base and checkpoint to the reviewer"
 t sa-commit-tickets-route 1 bash -c "cd $T && $SA commit-tickets"; has sa-commit-tickets-route "not inside a git repo"
-v1=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["version"])' "$R/.claude-plugin/plugin.json"); v2=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["plugins"][0]["version"])' "$R/.claude-plugin/marketplace.json")
+ver() { sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$1" | head -1; }   # the first "version" in a manifest
+v1=$(ver "$R/.claude-plugin/plugin.json"); v2=$(ver "$R/.claude-plugin/marketplace.json")
 [ -n "$v1" ] && [ "$v1" = "$v2" ] && ok || bad "manifest versions differ: plugin.json '$v1', marketplace.json '$v2'"
-for s in $(python3 -c 'import json,re,sys;print(*re.findall(r"/scripts/([A-Za-z0-9._-]+)", open(sys.argv[1]).read()))' "$R/hooks/hooks.json"); do
+v3=$(sed -n 's/^version = "\(.*\)"/\1/p' "$R/core/Cargo.toml" | head -1)
+[ "$v3" = "$v1" ] && ok || bad "core/Cargo.toml version '$v3' differs from plugin.json '$v1'"
+for s in $(grep -oE '/scripts/[A-Za-z0-9._-]+' "$R/hooks/hooks.json" | sed 's#^/scripts/##'); do
   [ -x "$X/$s" ] && ok || bad "hooks.json runs scripts/$s, which is missing or not executable"
 done
 for f in "$R"/scripts/* "$R"/bin/*; do [ -x "$f" ] && ok || bad "$f is not executable"; done
@@ -416,6 +454,44 @@ for ref in $(grep -ohE 'super-agents:[a-z][a-z-]*' "$R"/agents/*.md "$R"/skills/
   [ -f "$R/agents/$r.md" ] || [ -d "$R/skills/$r" ] && ok || bad "'$ref' names no agent or skill (typo in an Agent(...) allowlist silently stops dispatch)"
 done
 
+# ---- sa-native.sh: finds, fetches and verifies the native helper; never runs an unverified download
+t native-override 0 env SUPER_AGENTS_CORE=/bin/echo "$X/sa-native.sh" hello;    has native-override "hello"
+t sa-install-core 0 $SA install-core;                                             has sa-install-core "sa-core is installed"
+F=$T/fake; mkdir -p $F/scripts $F/.claude-plugin $F/dist/checksums $T/srv
+cp "$X/sa-native.sh" $F/scripts/; printf '{\n  "version": "9.9.9"\n}\n' > $F/.claude-plugin/plugin.json
+fake() { XDG_CACHE_HOME=$T/cache SUPER_AGENTS_CORE_URL=file://$T/srv $F/scripts/sa-native.sh "$@"; }
+t native-no-checksum 3 fake --version;                                            has native-no-checksum "no checksum for sa-core-"
+asset=$(sed -n 's/.*no checksum for \([^ ]*\) in.*/\1/p' <<<"$LAST")
+printf '#!/bin/sh\necho "fake core $*"\n' > $T/srv/$asset
+( cd $T/srv && { sha256sum "$asset" 2>/dev/null || shasum -a 256 "$asset"; } ) > $F/dist/checksums/v9.9.9.txt
+t native-fetch 0 fake --version;                                                  has native-fetch "fake core --version"
+[ -x "$T/cache/super-agents/9.9.9/$asset" ] && ok || bad "native-fetch did not cache $asset"
+echo tampered >> $T/srv/$asset; rm -rf $T/cache
+t native-mismatch 3 fake --version;                                               has native-mismatch "checksum mismatch"; hasnt native-mismatch "fake core"
+# no Python left in the plugin: the board, the evals fingerprint and the hooks' JSON run on sa-core
+if grep -rnE 'board\.py|hookio\.py|python3([^?]|$)' "$R"/agents "$R"/skills "$R"/scripts "$R"/bin "$R"/hooks "$R"/.github "$R"/README.md; then
+  bad "the lines above still use Python; use 'super-agents board', 'sa-native.sh fingerprint' or 'sa-native.sh hookio'"
+else ok; fi
+# a hook never blocks because sa-core is missing: with nothing to download it exits 0, says so, and blocks or
+# denies nothing. The same inputs block or deny when sa-core is there (the second half).
+cp "$X"/*.sh $F/scripts/; mkdir -p $T/empty .super-agents; rm -rf $T/cache; state; sedi 's/| E2 | pass |/| E2 | fail |/' $D/results.md
+gate_in=("eval-gate" "{\"cwd\":\"$T/repo\",\"session_id\":\"S\"}" "worker-gate" "{\"cwd\":\"$W\",\"agent_type\":\"super-agents:worker\"}"
+  "block-code-reads" "{\"cwd\":\"$T\",\"agent_type\":\"super-agents:first-time-user\",\"tool_name\":\"Read\",\"tool_input\":{}}" "session-start" "{\"cwd\":\"$T/repo\"}")
+for i in 0 2 4 6; do h=${gate_in[$i]}; j=${gate_in[$((i+1))]}
+  LAST=$(XDG_CACHE_HOME=$T/cache SUPER_AGENTS_CORE_URL="file://$T/empty" "$F/scripts/$h.sh" <<<"$j" 2>&1); rc=$?
+  [ $rc = 0 ] && ok || bad "$h exited $rc without sa-core"; has "$h-no-core" "sa-core"
+  hasnt "$h-no-core" '"decision": "block"'; hasnt "$h-no-core" '"permissionDecision": "deny"'
+done
+LAST=$("$X/eval-gate.sh" <<<"${gate_in[1]}");        has eval-gate-with-core '"decision": "block"'
+LAST=$("$X/worker-gate.sh" <<<"${gate_in[3]}");      has worker-gate-with-core '"decision": "block"'
+LAST=$("$X/block-code-reads.sh" <<<"${gate_in[5]}"); has block-code-reads-with-core '"permissionDecision": "deny"'
+sedi 's/| E2 | fail |/| E2 | pass |/' $D/results.md; rm -rf .super-agents $W/.job/gate_blocks
+# build-core.yml is about to be used for the first time: the default token is read-only, checkout stores no token where a dependency's
+# build script could read it, and a version that is already published is refused (a re-run would replace the live binaries)
+bc="$R/.github/workflows/build-core.yml"
+[ "$(awk '/^permissions:/{p=1;next} p&&/contents:/{print $2; exit}' "$bc")" = read ] && ok || bad "build-core.yml: the workflow-level token must be contents: read"
+[ "$(grep -c 'persist-credentials: false' "$bc")" = "$(grep -c 'actions/checkout@' "$bc")" ] && ok || bad "build-core.yml: every checkout needs persist-credentials: false"
+grep -q 'isDraft' "$bc" && ok || bad "build-core.yml: must refuse a release that is already published (isDraft)"
 for c in "$R"/evals/*/; do n=$(basename "$c"); [ "$n" = results ] && continue   # a case without a grader fails to load in 'claude plugin eval'
   [ -f "$c/prompt.md" ] && [ -n "$(ls "$c"/graders/*.md 2>/dev/null)" ] && ok || bad "eval case $n needs prompt.md and at least one graders/*.md"
 done

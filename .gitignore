@@ -1,6 +1,5 @@
-__pycache__/
-*.pyc
 .super-agents/
 .job/
 .claude/worktrees/
 evals/results/
+core/target/

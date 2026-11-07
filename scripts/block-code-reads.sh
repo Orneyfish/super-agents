@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # PreToolUse: keeps the first-time-user subagent blind to the code. Every other agent passes through untouched.
-here="$(cd "$(dirname "$0")" && pwd)"; get() { "$here/hookio.py" get "$@"; }
+here="$(cd "$(dirname "$0")" && pwd)"; get() { "$here/sa-native.sh" hookio get "$@"; }
 in=$(cat)
 grep -q 'first-time-user' <<<"$in" || exit 0                                   # cheap pre-filter, most calls end here
+"$here/sa-native.sh" --version >/dev/null 2>&1 || { echo '{"systemMessage": "super-agents: the first-time-user code block is off: sa-core is not available here (run super-agents install-core)."}'; exit 0; }
 re='(^|:)first-time-user$'; [[ $(get agent_type <<<"$in") =~ $re ]] || exit 0
 
-deny() { "$here/hookio.py" emit deny "$1"; exit 0; }
+deny() { "$here/sa-native.sh" hookio emit deny "$1"; exit 0; }
 msg="Blocked: you are a first-time user and must not look at the app's code. Use the app only through its UI, URL or CLI."
 
 case $(get tool_name <<<"$in") in

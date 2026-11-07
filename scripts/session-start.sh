@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # SessionStart: put the working agreement in every session; nudge un-set-up git projects; resume an active loop.
-command -v python3 >/dev/null || { echo "super-agents: python3 is not installed, so its hooks (the done-gates) are switched off. Install python3 to turn them on."; exit 0; }
 here="$(cd "$(dirname "$0")" && pwd)"
-in=$(cat); cwd=$("$here/hookio.py" get cwd <<<"$in"); sid=$("$here/hookio.py" get session_id <<<"$in"); cd "${cwd:-.}" 2>/dev/null || exit 0
+"$here/sa-native.sh" --version >/dev/null 2>&1 || { echo "super-agents: its native helper sa-core is not available here, so its hooks (the done-gates) are switched off. Run 'super-agents install-core' to see why."; exit 0; }
+in=$(cat); cwd=$("$here/sa-native.sh" hookio get cwd <<<"$in"); sid=$("$here/sa-native.sh" hookio get session_id <<<"$in"); cd "${cwd:-.}" 2>/dev/null || exit 0
 
 ctx="The super-agents plugin is active for this user. Working agreement: a task counts as done only when proven with output run in this session (test results, screenshot, eval pass), not on the agent's own say-so. For non-trivial user-visible features in git projects the flow is /super-agents:write-eval, then /super-agents:review-loop; for several features at once, /super-agents:write-tickets, /super-agents:mark-ready, then the user runs the 'superagent' command in a terminal. Also available: :classify-risk, :first-time-user, :fix-bug, :setup-project."
 [ -n "$sid" ] && ctx+=" This session's id is $sid; a review-loop started here records it as 'session:' in .super-agents/state.md, so only this session is gated by it."
@@ -17,4 +17,4 @@ if top=$(git rev-parse --show-toplevel 2>/dev/null); then
   [ -f "$top/specs/tickets/BOARD.md" ] && ctx+=" A ticket board exists at specs/tickets/BOARD.md; ready tickets are built in parallel by the router the user starts with 'superagent', not in an ordinary session."
 fi
 
-"$here/hookio.py" emit context "$ctx"
+"$here/sa-native.sh" hookio emit context "$ctx"
