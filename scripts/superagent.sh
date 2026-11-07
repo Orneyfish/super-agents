@@ -16,7 +16,7 @@ esac
 paths=(); for x in specs/tickets .gitignore review.md CLAUDE.md AGENTS.md; do [ -e "$x" ] && paths+=("$x"); done
 if [ ${#paths[@]} -gt 0 ] && [ -n "$(git status --porcelain -- "${paths[@]}")" ]; then
   read -r -p "Tickets or project files are uncommitted, and workers only see committed files. Commit them to '$(git branch --show-current)'? [Y/n] " a
-  if [[ ${a:-y} =~ ^[Yy] ]]; then git add -A -- "${paths[@]}" && git commit -qm "super-agents: tickets and project files for the router" || exit 1
+  if [[ ${a:-y} =~ ^[Yy] ]]; then git add -A -- "${paths[@]}" && git commit -qm "super-agents: tickets and project files for the router" -- "${paths[@]}" || exit 1   # paths: the user's other staged work stays out
   else echo "superagent: refusing to start with uncommitted tickets (workers would not see them)" >&2; exit 1; fi
 fi
 

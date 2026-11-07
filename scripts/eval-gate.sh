@@ -10,7 +10,8 @@ get() { sed -n "s/^$1: *//p" "$st" | head -1; }
 [ "$(get awaiting_user)" = true ] && exit 0           # waiting on the human, not claiming done
 dir=$(get dir); [[ $dir =~ ^[A-Za-z0-9._/-]+$ && $dir != *..* && -d "$cwd/$dir" ]] || exit 0
 sid=$(jq -r '.session_id // empty' <<<"$in"); owner=$(get session)
-if [ -z "$owner" ] && [ -n "$sid" ]; then echo "session: $sid" >> "$st"; elif [ -n "$owner" ] && [ -n "$sid" ] && [ "$owner" != "$sid" ]; then exit 0; fi
+if [ -z "$owner" ] && [ -n "$sid" ]; then echo "session: $sid" >> "$st"; owner=$(get session); fi   # re-read: with two claims at once the first line wins
+[ -n "$owner" ] && [ -n "$sid" ] && [ "$owner" != "$sid" ] && exit 0
 
 out=$("$(dirname "$0")/check-evals.sh" "$cwd/$dir" --passed) && exit 0
 left=$(grep -c '^FAIL' <<<"$out")
