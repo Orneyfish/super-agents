@@ -8,10 +8,19 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
-/// Lowercase hex sha256 of a file's bytes: the content of `.evals.sha256` (plus a newline there).
+/// Lowercase hex sha256 of a file, with every CRLF read as LF: the content of `.evals.sha256` (plus a newline there).
+/// The fingerprint is of what the user approved, not of how Git wrote it: with `core.autocrlf=true` (the Git for
+/// Windows default) a worker's worktree is checked out with CRLF, and its evals.md must still match. A carriage
+/// return that is not part of a CRLF is content and still counts.
 pub fn fingerprint(file: &Path) -> io::Result<String> {
-    let digest = Sha256::digest(fs::read(file)?);
-    Ok(format!("{digest:x}"))
+    let bytes = fs::read(file)?;
+    let mut text = Vec::with_capacity(bytes.len());
+    for (i, &b) in bytes.iter().enumerate() {
+        if !(b == b'\r' && bytes.get(i + 1) == Some(&b'\n')) {
+            text.push(b);
+        }
+    }
+    Ok(format!("{:x}", Sha256::digest(text)))
 }
 
 pub const STATUSES: [&str; 4] = ["draft", "ready", "building", "done"];

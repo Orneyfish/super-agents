@@ -38,3 +38,23 @@ jobs:
       - name: Rust tests
         working-directory: core
         run: cargo test --locked
+
+  # The plugin's shell side under Git Bash, which is what Claude Code uses on Windows: the launcher, the hooks and tests/run.sh.
+  shell-windows:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: The published sa-core.exe installs through the launcher (once this version is released)
+        run: |
+          ver=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' .claude-plugin/plugin.json | head -1)
+          if curl -fsIL "https://github.com/Orneyfish/super-agents/releases/download/v$ver/checksums.txt" >/dev/null; then
+            bin/super-agents install-core
+          else
+            echo "v$ver is not published yet, so there is no binary to download; skipped"
+          fi
+      - name: Tests
+        run: bash tests/run.sh

@@ -1,0 +1,3 @@
+# The scripts, templates and docs are read by bash and compared byte for byte (diff, hashes). Keep LF in the working tree on every
+# platform, whatever core.autocrlf says: Git for Windows defaults it to true, which otherwise checks every script out with CRLF.
+* text=auto eol=lf
