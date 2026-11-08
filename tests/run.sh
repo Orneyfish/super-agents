@@ -136,6 +136,8 @@ sedi 's/^- check: c$//' $F/evals.md
 t eval-missing-line 1 $X/check-evals.sh $F;                        has eval-missing-line 'FAIL: E1 is missing its "check" line'
 # PR review: a worker's worktree lives in .claude/worktrees; a fingerprint the worker wrote there must not count when the user's checkout has none
 M3=$T/m3; mkfix $M3/specs/tickets/001-x; git -C $M3 init -q -b main; git -C $M3 add -A >/dev/null; git -C $M3 -c user.email=t@t -c user.name=t commit -qm base
+# git checks a worktree out with CRLF when core.autocrlf is true (the Git for Windows default): the worker's evals.md must still match the fingerprint of the approved LF original
+git -C $M3 config core.autocrlf true
 mkdir -p $M3/.claude; git -C $M3 worktree add -q $M3/.claude/worktrees/w -b w; WT=$M3/.claude/worktrees/w/specs/tickets/001-x
 fp $WT; t eval-worker-forged-fp 1 $X/check-evals.sh $WT --passed;   has eval-worker-forged-fp "no approval fingerprint"
 fp $M3/specs/tickets/001-x; t eval-worker-main-fp 0 $X/check-evals.sh $WT --passed

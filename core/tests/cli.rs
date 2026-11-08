@@ -48,3 +48,18 @@ fn fingerprint_of_a_missing_file_fails() {
     assert_eq!(r.code, 1);
     assert!(r.stderr.starts_with("nope: "), "{}", r.stderr);
 }
+
+// Git's autocrlf checks a worker's worktree out with CRLF; the fingerprint is of what the user approved, not of how Git wrote it.
+#[test]
+fn fingerprint_reads_crlf_as_lf() {
+    let t = tempfile::tempdir().unwrap();
+    fs::write(t.path().join("lf"), "# E\n\n## E1: a\n").unwrap();
+    fs::write(t.path().join("crlf"), "# E\r\n\r\n## E1: a\r\n").unwrap();
+    fs::write(t.path().join("mixed"), "# E\r\n\n## E1: a\n").unwrap();
+    let lf = sa(t.path(), &["fingerprint", "lf"]).stdout;
+    assert_eq!(sa(t.path(), &["fingerprint", "crlf"]).stdout, lf);
+    assert_eq!(sa(t.path(), &["fingerprint", "mixed"]).stdout, lf);
+    // a carriage return that is not part of CRLF is content, and still counts
+    fs::write(t.path().join("lone"), "# E\r\n\n## E1: a\r").unwrap();
+    assert_ne!(sa(t.path(), &["fingerprint", "lone"]).stdout, lf);
+}
