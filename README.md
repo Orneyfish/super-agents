@@ -50,6 +50,8 @@ What degrades outside Claude Code: the hooks that stop an agent from saying "don
 
 **Many features, in parallel:** `/super-agents:write-tickets <request or PRD>` → read the tickets → `/super-agents:mark-ready 001 002` → run `superagent` in a terminal and say "start with 001" (or just "start"). Workers build from committed files only, so `superagent` first lists the uncommitted tickets, `review.md`, `CLAUDE.md` and `.gitignore` (your own unfinished edits to them included) and offers to commit them. A ticket you write or approve after `superagent` has started is not in new workers' worktrees until you run `super-agents commit-tickets` in a terminal (the router cannot run git; it will ask you to).
 
+**Keeping specs out of your PRs:** `setup` git-ignores `specs/<name>/` (single-feature specs are never committed). `specs/tickets/` must be committed while tickets run, so before you merge a ticket branch run `super-agents drop-specs` on it: it commits the removal of `specs/` (refused while a ticket on the board is not `done`), and the files stay in the branch's history.
+
 ## Commands
 
 | Command | What it does |
