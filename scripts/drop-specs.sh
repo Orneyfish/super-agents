@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# drop-specs: run on the integration branch (the one the PR comes from, not a worker branch) once every ticket is done. Commits the
+# drop-specs: the router has the merger run this on the integration branch (the one the PR comes from) once the last ticket is checked,
+# so nobody types it; by hand only for a branch that tracked specs/ before 'setup'. Needs every ticket done. Commits the
 # removal of everything tracked under specs/ (tickets, BOARD.md, specs committed before 'setup'), so the requirements and eval
 # documents do not land in the project. They stay in this branch's history: git show <sha>:specs/...
 # Single-feature specs are git-ignored by 'setup', so a project set up from the start has nothing else to drop.

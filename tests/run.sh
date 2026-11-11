@@ -474,6 +474,7 @@ done
 grep -q 'super-agents commit-tickets' "$R/agents/router.md" && ok || bad "router.md no longer asks the user to run 'super-agents commit-tickets' for tickets approved late"
 grep -q "building.*team" "$R/agents/merger.md" && grep -q 'stray files' "$R/agents/merger.md" && ok || bad "merger.md no longer tells a running team's files from stray files"
 grep -q '^base: ' "$R/skills/review-loop/SKILL.md" && grep -q '`base` and `checkpoint`' "$R/skills/review-loop/SKILL.md" && grep -q '`base` in round 1' "$R/agents/reviewer.md" && ok || bad "the review-loop no longer records base or passes base and checkpoint to the reviewer"
+grep -q 'drop specs' "$R/agents/router.md" && grep -q 'drop specs' "$R/agents/merger.md" && grep -q 'super-agents drop-specs' "$R/agents/merger.md" && ok || bad "the router no longer hands the merger 'drop specs' (or the merger no longer runs 'super-agents drop-specs'): specs/ would reach the PR"
 t sa-commit-tickets-route 1 bash -c "cd $T && $SA commit-tickets"; has sa-commit-tickets-route "not inside a git repo"
 t sa-drop-specs-route 1 bash -c "cd $T && $SA drop-specs"; has sa-drop-specs-route "not inside a git repo"
 ver() { sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$1" | head -1; }   # the first "version" in a manifest
