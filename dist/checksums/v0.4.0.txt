@@ -1,0 +1,5 @@
+e3ce14a19490817e66bd4859f4dea9d0066dda39f26af21a600d0384f9badc50  sa-core-aarch64-apple-darwin
+8d31def41fd8ac92a2a6e93d93b94538e4d2acc8e9a115ab15428d26e69b0d2c  sa-core-aarch64-unknown-linux-musl
+f761a7236df8cfe8b434cfa505c7e953f30e2dd831cdc63ecf229e9636d91be5  sa-core-x86_64-apple-darwin
+b8e4c904fe47da20c5081691980e4b0584e094d13591f3301c5193c8659d1de8  sa-core-x86_64-pc-windows-msvc.exe
+91223b14d127591d9ba36fe1b1f617185468646b6e701d8a5dec78f0a21142e5  sa-core-x86_64-unknown-linux-musl
