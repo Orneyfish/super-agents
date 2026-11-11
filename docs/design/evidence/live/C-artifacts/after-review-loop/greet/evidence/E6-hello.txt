@@ -1,0 +1,7 @@
+hello, world$
+exit=0
+exit=2
+0
+test_hello (test_greeter.TestGreeter.test_hello) ... ok
+test_unknown_command_is_usage_error (test_greeter.TestGreeter.test_unknown_command_is_usage_error) ... ok
+OK

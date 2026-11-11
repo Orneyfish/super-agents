@@ -1,0 +1,5 @@
+[greet ""] exit=2 stdout_bytes=0 stderr_bytes=30 traceback=0 unknown_cmd_usage=0
+[greet "   "] exit=2 stdout_bytes=0 stderr_bytes=30 traceback=0 unknown_cmd_usage=0
+[greet --shout] exit=2 stdout_bytes=0 stderr_bytes=55 traceback=0 unknown_cmd_usage=0
+[greet "" --shout] exit=2 stdout_bytes=0 stderr_bytes=30 traceback=0 unknown_cmd_usage=0
+[greet "	"] exit=2 stdout_bytes=0 stderr_bytes=30 traceback=0 unknown_cmd_usage=0

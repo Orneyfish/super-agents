@@ -1,0 +1,2 @@
+hook commands under the real repo: 0
+Read hooks.json for plugin super-agents (enabled=true): /tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/work/plugin-probe/hooks/hooks.json

@@ -1,0 +1,9 @@
+run1-main-probe              model=claude-haiku-5-5   cost_usd=0.0137 result=success
+run2-resume-baseref-head     model=claude-haiku-5-5   cost_usd=0.0190 result=success
+run3-router-allowlist        model=claude-haiku-5-5   cost_usd=0.0089 result=success
+run4-write-eval              model=claude-haiku-5-5   cost_usd=0.0209 result=success
+run5-review-loop             model=claude-sonnet-5-5  cost_usd=0.4126 result=success
+run6-tool-lists              model=claude-haiku-5-5   cost_usd=0.0070 result=success
+run7-worker-gate             model=claude-haiku-5-5   cost_usd=0.0044 result=success
+run8-auto-mode-worktree      model=claude-sonnet-5-5  cost_usd=0.1189 result=success
+TOTAL live runs: 8   total cost_usd=0.6055

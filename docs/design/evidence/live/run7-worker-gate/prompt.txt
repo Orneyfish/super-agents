@@ -1,0 +1,1 @@
+Harness probe. Use the Agent tool with subagent_type super-agents:worker and prompt: go. Run it in the foreground and wait. Then reply "WORKER_FINAL:" followed by its final reply verbatim. Do nothing else.

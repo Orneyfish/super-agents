@@ -1,0 +1,93 @@
+{
+ "hooks": {
+  "SessionStart": [
+   {
+    "hooks": [
+     {
+      "type": "command",
+      "command": "\"/tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/evidence/hooks/probe-log.sh\" SessionStart"
+     }
+    ]
+   }
+  ],
+  "UserPromptSubmit": [
+   {
+    "hooks": [
+     {
+      "type": "command",
+      "command": "\"/tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/evidence/hooks/probe-log.sh\" UserPromptSubmit"
+     }
+    ]
+   }
+  ],
+  "PreToolUse": [
+   {
+    "hooks": [
+     {
+      "type": "command",
+      "command": "\"/tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/evidence/hooks/probe-log.sh\" PreToolUse"
+     }
+    ]
+   },
+   {
+    "matcher": "Write",
+    "hooks": [
+     {
+      "type": "command",
+      "command": "\"/tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/evidence/hooks/probe-deny.sh\" \"/tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/work/plugin-probe/scripts/sa-native.sh\""
+     }
+    ]
+   }
+  ],
+  "PostToolUse": [
+   {
+    "hooks": [
+     {
+      "type": "command",
+      "command": "\"/tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/evidence/hooks/probe-log.sh\" PostToolUse"
+     }
+    ]
+   }
+  ],
+  "SubagentStart": [
+   {
+    "hooks": [
+     {
+      "type": "command",
+      "command": "\"/tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/evidence/hooks/probe-log.sh\" SubagentStart"
+     }
+    ]
+   }
+  ],
+  "SubagentStop": [
+   {
+    "hooks": [
+     {
+      "type": "command",
+      "command": "\"/tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/evidence/hooks/probe-log.sh\" SubagentStop"
+     }
+    ]
+   }
+  ],
+  "Stop": [
+   {
+    "hooks": [
+     {
+      "type": "command",
+      "command": "\"/tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/evidence/hooks/probe-log.sh\" Stop"
+     }
+    ]
+   }
+  ],
+  "SessionEnd": [
+   {
+    "hooks": [
+     {
+      "type": "command",
+      "command": "\"/tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/evidence/hooks/probe-log.sh\" SessionEnd"
+     }
+    ]
+   }
+  ]
+ }
+}

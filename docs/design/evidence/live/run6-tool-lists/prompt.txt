@@ -1,0 +1,1 @@
+Harness probe. Do exactly this, in the foreground: 1. Agent tool, subagent_type super-agents:probe-readonly, prompt: go. 2. Agent tool, subagent_type super-agents:probe-denylist, prompt: go. Then reply "READONLY:" plus the first reply verbatim, then "DENYLIST:" plus the second reply verbatim. Do nothing else.

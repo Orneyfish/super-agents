@@ -1,0 +1,1 @@
+Harness probe. Use the Agent tool with subagent_type super-agents:probe-auto and prompt: go. Wait for its result (if it runs in the background, wait for the completion notification). Then reply "AUTO:" followed by its final reply verbatim. Do nothing else.

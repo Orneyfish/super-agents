@@ -1,0 +1,7 @@
+cwd=/tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/work/probe-repo2
+plugin=/tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/work/plugin-probe
+model=haiku max_turns=20 max_usd=0.80
+extra: --agent super-agents:probe-router
+claude: 2.1.322 (Claude Code)
+2026-11-11T15:56:12Z
+exit=0

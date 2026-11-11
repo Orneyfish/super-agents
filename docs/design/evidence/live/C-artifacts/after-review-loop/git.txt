@@ -1,0 +1,11 @@
+ca0a5dd super-agents(greet): round 1, 7/7 evals pass
+a94d01e greeter: base project, set up for super-agents
+ca0a5ddf42731a7420edf0bf6bd2ae50fecafe67 super-agents(greet): round 1, 7/7 evals pass
+
+ greeter.py      | 23 +++++++++++++++++++++++
+ test_greeter.py | 20 ++++++++++++++++++++
+ 2 files changed, 43 insertions(+)
+!! .claude/
+!! .super-agents/
+!! __pycache__/
+!! specs/
