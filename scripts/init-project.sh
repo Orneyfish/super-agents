@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Usage: init-project.sh [dir ...]      default: current dir. Idempotent; only touches git repos.
-# Adds review.md, keeps the super-agents block in CLAUDE.md current (it @-imports review.md), and git-ignores run state.
+# Adds review.md, keeps the super-agents block in CLAUDE.md current (it @-imports review.md), and git-ignores run state
+# and single-feature specs (specs/<name>/), so neither lands in a PR.
 root="$(cd "$(dirname "$0")/.." && pwd)"
 block="$root/templates/claude-block.md"
 
@@ -26,7 +27,8 @@ init_one() {
     fi
   done
 
-  for pat in .super-agents/ .job/ .claude/worktrees/; do
+  # specs/tickets stays tracked (worker worktrees only see committed files); 'super-agents drop-specs' removes it before a PR merges
+  for pat in .super-agents/ .job/ .claude/worktrees/ 'specs/*' '!specs/tickets/'; do
     grep -qxF "$pat" .gitignore 2>/dev/null && continue
     { [ -n "$(tail -c1 .gitignore 2>/dev/null)" ] && echo; echo "$pat"; } >> .gitignore
     echo "added  $pat to $top/.gitignore"

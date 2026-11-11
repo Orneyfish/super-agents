@@ -277,6 +277,32 @@ t init-prose-markers 0 $X/init-project.sh $T/p5;                   has init-pros
 grep -q '^rule A' $T/p5/CLAUDE.md && grep -q '^rule B' $T/p5/CLAUDE.md && grep -q '^rule C' $T/p5/CLAUDE.md && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL init deleted user lines that only mention the markers"; }
 t init-prose-idempotent 0 $X/init-project.sh $T/p5;                hasnt init-prose-idempotent "updated"; hasnt init-prose-idempotent "added  super-agents"
 
+# specs/<name>/ is git-ignored, so the review-loop's `git add -A` checkpoint keeps it out of the PR; specs/tickets/ stays committable
+mkdir -p $T/p8; git -C $T/p8 init -q -b main; git -C $T/p8 config user.email t@t; git -C $T/p8 config user.name t
+$X/init-project.sh $T/p8 >/dev/null; git -C $T/p8 add -A; git -C $T/p8 commit -qm base
+git -C $T/p8 switch -q -c feat/z; mkdir -p $T/p8/specs/z/evidence $T/p8/specs/tickets/001-a; echo x > $T/p8/specs/z/RD.md; echo x > $T/p8/specs/z/evidence/E1.png; echo x > $T/p8/specs/tickets/001-a/RD.md
+git -C $T/p8 add -A; [ "$(git -C $T/p8 ls-files specs)" = specs/tickets/001-a/RD.md ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL git add -A tracked: $(git -C $T/p8 ls-files specs | tr '\n' ' ')"; }
+# drop-specs: the integration branch loses specs/ before the merge, but only once every ticket is done on its committed board
+printf '# Board\n| # | Title | Status | Mode | Runs |\n|---|---|---|---|---|\n| 001 | A | building | solo | alongside |\n' > $T/p8/specs/tickets/BOARD.md; git -C $T/p8 add -A; git -C $T/p8 commit -qm tickets
+cd $T/p8 || exit
+t drop-specs-open 1 $X/drop-specs.sh;                             has drop-specs-open "not marked done"; has drop-specs-open "001"
+cp specs/tickets/BOARD.md B.bak; git rm -q specs/tickets/BOARD.md; git commit -qm "no board"
+t drop-specs-no-board 1 $X/drop-specs.sh;                         has drop-specs-no-board "not marked done"   # fails closed, not "no open tickets"
+git reset -q --hard HEAD~1; sedi 's/| building |/| done |/' specs/tickets/BOARD.md
+t drop-specs-uncommitted-done 1 $X/drop-specs.sh;                 has drop-specs-uncommitted-done "not marked done"   # judged on the committed board
+git commit -qam "mark done"; echo more >> specs/tickets/001-a/RD.md
+t drop-specs-dirty 1 $X/drop-specs.sh;                            has drop-specs-dirty "uncommitted changes"
+[ -n "$(git ls-files specs)" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL drop-specs removed files it refused to drop"; }
+git checkout -q -- specs; echo staged > other.txt; git add other.txt
+git rm -r -q specs   # a removal staged by an earlier run whose commit failed: re-running must still commit it
+t drop-specs 0 $X/drop-specs.sh;                                  has drop-specs "dropped specs/"
+[ -z "$(git ls-files specs)" ] && [ "$(git log -1 --format=%s)" = "super-agents: drop specs before merge" ] && [ "$(git diff-tree --no-commit-id --name-only -r HEAD | grep -vc '^specs/')" = 0 ] && git diff --cached --name-only | grep -qx other.txt && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL drop-specs commit: tracked=$(git ls-files specs | tr '\n' ' ') files=$(git diff-tree --no-commit-id --name-only -r HEAD | tr '\n' ' ')"; }
+[ -f specs/z/RD.md ] && [ ! -e specs/tickets ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL drop-specs touched ignored single-feature specs or left tickets on disk"; }
+git show HEAD~1:specs/tickets/001-a/RD.md >/dev/null 2>&1 && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL dropped tickets are not in the branch history"; }
+t drop-specs-again 0 $X/drop-specs.sh;                            has drop-specs-again "nothing to drop"
+git switch -q main; t drop-specs-on-main 1 $X/drop-specs.sh;       has drop-specs-on-main "not here"
+cd "$T" || exit
+
 # ---- superagent.sh with a fake claude
 mkdir -p $T/bin; printf '#!/bin/sh\necho "ARGS: $*"; echo "TEAMS=$CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"\n' > $T/bin/claude; chmod +x $T/bin/claude
 cd $T/repo || exit; git switch -q main; git add specs && git commit -qm "tickets"
@@ -449,6 +475,7 @@ grep -q 'super-agents commit-tickets' "$R/agents/router.md" && ok || bad "router
 grep -q "building.*team" "$R/agents/merger.md" && grep -q 'stray files' "$R/agents/merger.md" && ok || bad "merger.md no longer tells a running team's files from stray files"
 grep -q '^base: ' "$R/skills/review-loop/SKILL.md" && grep -q '`base` and `checkpoint`' "$R/skills/review-loop/SKILL.md" && grep -q '`base` in round 1' "$R/agents/reviewer.md" && ok || bad "the review-loop no longer records base or passes base and checkpoint to the reviewer"
 t sa-commit-tickets-route 1 bash -c "cd $T && $SA commit-tickets"; has sa-commit-tickets-route "not inside a git repo"
+t sa-drop-specs-route 1 bash -c "cd $T && $SA drop-specs"; has sa-drop-specs-route "not inside a git repo"
 ver() { sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$1" | head -1; }   # the first "version" in a manifest
 v1=$(ver "$R/.claude-plugin/plugin.json"); v2=$(ver "$R/.claude-plugin/marketplace.json")
 [ -n "$v1" ] && [ "$v1" = "$v2" ] && ok || bad "manifest versions differ: plugin.json '$v1', marketplace.json '$v2'"
