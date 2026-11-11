@@ -284,6 +284,7 @@ git -C $T/p8 switch -q -c feat/z; mkdir -p $T/p8/specs/z/evidence $T/p8/specs/ti
 git -C $T/p8 add -A; [ "$(git -C $T/p8 ls-files specs)" = specs/tickets/001-a/RD.md ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL git add -A tracked: $(git -C $T/p8 ls-files specs | tr '\n' ' ')"; }
 # drop-specs: the integration branch loses specs/ before the merge, but only once every ticket is done on its committed board
 printf '# Board\n| # | Title | Status | Mode | Runs |\n|---|---|---|---|---|\n| 001 | A | building | solo | alongside |\n' > $T/p8/specs/tickets/BOARD.md; git -C $T/p8 add -A; git -C $T/p8 commit -qm tickets
+printf 'openapi: 3\n' > $T/p8/specs/api.yaml; git -C $T/p8 add -f specs/api.yaml; git -C $T/p8 commit -qm "the project's own specs file"   # tracked before setup: not ours
 cd $T/p8 || exit
 t drop-specs-open 1 $X/drop-specs.sh;                             has drop-specs-open "not marked done"; has drop-specs-open "001"
 cp specs/tickets/BOARD.md B.bak; git rm -q specs/tickets/BOARD.md; git commit -qm "no board"
@@ -294,10 +295,11 @@ git commit -qam "mark done"; echo more >> specs/tickets/001-a/RD.md
 t drop-specs-dirty 1 $X/drop-specs.sh;                            has drop-specs-dirty "uncommitted changes"
 [ -n "$(git ls-files specs)" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL drop-specs removed files it refused to drop"; }
 git checkout -q -- specs; echo staged > other.txt; git add other.txt
-git rm -r -q specs   # a removal staged by an earlier run whose commit failed: re-running must still commit it
-t drop-specs 0 $X/drop-specs.sh;                                  has drop-specs "dropped specs/"
-[ -z "$(git ls-files specs)" ] && [ "$(git log -1 --format=%s)" = "super-agents: drop specs before merge" ] && [ "$(git diff-tree --no-commit-id --name-only -r HEAD | grep -vc '^specs/')" = 0 ] && git diff --cached --name-only | grep -qx other.txt && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL drop-specs commit: tracked=$(git ls-files specs | tr '\n' ' ') files=$(git diff-tree --no-commit-id --name-only -r HEAD | tr '\n' ' ')"; }
+git rm -r -q specs/tickets   # a removal staged by an earlier run whose commit failed: re-running must still commit it
+t drop-specs 0 $X/drop-specs.sh;                                  has drop-specs "dropped specs/tickets/"
+[ -z "$(git ls-files specs/tickets)" ] && [ "$(git log -1 --format=%s)" = "super-agents: drop specs before merge" ] && [ "$(git diff-tree --no-commit-id --name-only -r HEAD | grep -vc '^specs/tickets/')" = 0 ] && git diff --cached --name-only | grep -qx other.txt && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL drop-specs commit: tracked=$(git ls-files specs | tr '\n' ' ') files=$(git diff-tree --no-commit-id --name-only -r HEAD | tr '\n' ' ')"; }
 [ -f specs/z/RD.md ] && [ ! -e specs/tickets ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL drop-specs touched ignored single-feature specs or left tickets on disk"; }
+git ls-files --error-unmatch specs/api.yaml >/dev/null 2>&1 && [ -f specs/api.yaml ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL drop-specs deleted the project's own file under specs/"; }
 git show HEAD~1:specs/tickets/001-a/RD.md >/dev/null 2>&1 && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL dropped tickets are not in the branch history"; }
 t drop-specs-again 0 $X/drop-specs.sh;                            has drop-specs-again "nothing to drop"
 git switch -q main; t drop-specs-on-main 1 $X/drop-specs.sh;       has drop-specs-on-main "not here"
@@ -474,6 +476,7 @@ done
 grep -q 'super-agents commit-tickets' "$R/agents/router.md" && ok || bad "router.md no longer asks the user to run 'super-agents commit-tickets' for tickets approved late"
 grep -q "building.*team" "$R/agents/merger.md" && grep -q 'stray files' "$R/agents/merger.md" && ok || bad "merger.md no longer tells a running team's files from stray files"
 grep -q '^base: ' "$R/skills/review-loop/SKILL.md" && grep -q '`base` and `checkpoint`' "$R/skills/review-loop/SKILL.md" && grep -q '`base` in round 1' "$R/agents/reviewer.md" && ok || bad "the review-loop no longer records base or passes base and checkpoint to the reviewer"
+grep -q 'watchdog keeps running' "$R/agents/router.md" && grep -q 'NOT REPRODUCED' "$R/agents/router.md" && ok || bad "the router's Finish step no longer excludes the watchdog and unresolved checks"
 grep -q 'drop specs' "$R/agents/router.md" && grep -q 'drop specs' "$R/agents/merger.md" && grep -q 'super-agents drop-specs' "$R/agents/merger.md" && ok || bad "the router no longer hands the merger 'drop specs' (or the merger no longer runs 'super-agents drop-specs'): specs/ would reach the PR"
 t sa-commit-tickets-route 1 bash -c "cd $T && $SA commit-tickets"; has sa-commit-tickets-route "not inside a git repo"
 t sa-drop-specs-route 1 bash -c "cd $T && $SA drop-specs"; has sa-drop-specs-route "not inside a git repo"

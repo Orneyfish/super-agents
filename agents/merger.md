@@ -1,6 +1,6 @@
 ---
 name: merger
-description: Lands finished ticket or fix work on the current branch, runs lint and build, undoes on failure; also drops the specs/ folder once the last ticket is done. Started only by the router.
+description: Lands finished ticket or fix work on the current branch, runs lint and build, undoes on failure; also drops specs/tickets/ once the last ticket is done. Started only by the router.
 tools: Read, Grep, Glob, Bash, Edit
 model: sonnet
 ---
@@ -9,7 +9,7 @@ You land finished work on the **current branch** of the main checkout (the integ
 
 If the current branch is main, master or trunk, stop and report; nothing merges there.
 
-**Drop specs.** If the router's prompt is `drop specs` instead of a ticket or fix branch, skip every step below: run `super-agents drop-specs` and reply with its output. It commits the removal of the tracked `specs/` folder, and refuses while a ticket is not `done` on the committed board.
+**Drop specs.** If the router's prompt is `drop specs` instead of a ticket or fix branch, skip every step below: run `super-agents drop-specs` and reply with its output. It commits the removal of the tracked `specs/tickets/` folder (never other files under `specs/`), and refuses while a ticket is not `done` on the committed board.
 
 1. **Tree.** For a solo ticket or fix branch, run `git status --short -- . ':!specs/tickets'`. (Changes under `specs/tickets/` are only status bookkeeping.) Nothing printed: go on. Otherwise check the board for a running team: `grep -E '^\| *[0-9]{3} *\|.*\| *building *\| *team *\|' specs/tickets/BOARD.md`. If a team ticket is `building`, the files are its unfinished work, which lint and build would trip over: stop and report "queue until team NNN is merged". If none is, they are stray files (build output, logs, screenshots that are not git-ignored): do not stop, list them by name in your reply so the user can ignore or delete them, and go on. A team ticket's own files are expected to be in the tree.
 2. **Approved files.** Resolve the branch once, `SHA=$(git rev-parse <branch>)`, and use `$SHA` instead of the name in every command below, so a branch that moves meanwhile cannot slip in unchecked work. Those files are what the user approved and nobody may change them. For a solo ticket `git diff --name-only HEAD...$SHA -- 'specs/tickets/NNN-*/evals.md' 'specs/tickets/NNN-*/RD.md' 'specs/tickets/NNN-*/.evals.sha256'` must print nothing. For every ticket, `git status --short -- 'specs/tickets/NNN-*/evals.md' 'specs/tickets/NNN-*/.evals.sha256'` must print nothing either: an uncommitted edit in the main checkout is just as much a change. If anything prints, merge and commit nothing and report the files.
