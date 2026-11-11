@@ -282,14 +282,19 @@ mkdir -p $T/p8; git -C $T/p8 init -q -b main; git -C $T/p8 config user.email t@t
 $X/init-project.sh $T/p8 >/dev/null; git -C $T/p8 add -A; git -C $T/p8 commit -qm base
 git -C $T/p8 switch -q -c feat/z; mkdir -p $T/p8/specs/z/evidence $T/p8/specs/tickets/001-a; echo x > $T/p8/specs/z/RD.md; echo x > $T/p8/specs/z/evidence/E1.png; echo x > $T/p8/specs/tickets/001-a/RD.md
 git -C $T/p8 add -A; [ "$(git -C $T/p8 ls-files specs)" = specs/tickets/001-a/RD.md ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL git add -A tracked: $(git -C $T/p8 ls-files specs | tr '\n' ' ')"; }
-# drop-specs: the ticket branch loses specs/ before the merge, but only once every ticket is done
+# drop-specs: the integration branch loses specs/ before the merge, but only once every ticket is done on its committed board
 printf '# Board\n| # | Title | Status | Mode | Runs |\n|---|---|---|---|---|\n| 001 | A | building | solo | alongside |\n' > $T/p8/specs/tickets/BOARD.md; git -C $T/p8 add -A; git -C $T/p8 commit -qm tickets
 cd $T/p8 || exit
-t drop-specs-open 1 $X/drop-specs.sh;                             has drop-specs-open "not done yet"; has drop-specs-open "001"
-sedi 's/| building |/| done |/' specs/tickets/BOARD.md
+t drop-specs-open 1 $X/drop-specs.sh;                             has drop-specs-open "not marked done"; has drop-specs-open "001"
+cp specs/tickets/BOARD.md B.bak; git rm -q specs/tickets/BOARD.md; git commit -qm "no board"
+t drop-specs-no-board 1 $X/drop-specs.sh;                         has drop-specs-no-board "not marked done"   # fails closed, not "no open tickets"
+git reset -q --hard HEAD~1; sedi 's/| building |/| done |/' specs/tickets/BOARD.md
+t drop-specs-uncommitted-done 1 $X/drop-specs.sh;                 has drop-specs-uncommitted-done "not marked done"   # judged on the committed board
+git commit -qam "mark done"; echo more >> specs/tickets/001-a/RD.md
 t drop-specs-dirty 1 $X/drop-specs.sh;                            has drop-specs-dirty "uncommitted changes"
 [ -n "$(git ls-files specs)" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL drop-specs removed files it refused to drop"; }
-git commit -qam "mark done"; echo staged > other.txt; git add other.txt
+git checkout -q -- specs; echo staged > other.txt; git add other.txt
+git rm -r -q specs   # a removal staged by an earlier run whose commit failed: re-running must still commit it
 t drop-specs 0 $X/drop-specs.sh;                                  has drop-specs "dropped specs/"
 [ -z "$(git ls-files specs)" ] && [ "$(git log -1 --format=%s)" = "super-agents: drop specs before merge" ] && [ "$(git diff-tree --no-commit-id --name-only -r HEAD | grep -vc '^specs/')" = 0 ] && git diff --cached --name-only | grep -qx other.txt && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL drop-specs commit: tracked=$(git ls-files specs | tr '\n' ' ') files=$(git diff-tree --no-commit-id --name-only -r HEAD | tr '\n' ' ')"; }
 [ -f specs/z/RD.md ] && [ ! -e specs/tickets ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL drop-specs touched ignored single-feature specs or left tickets on disk"; }
