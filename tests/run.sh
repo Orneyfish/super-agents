@@ -642,6 +642,39 @@ for ref in $(grep -ohE 'super-agents:[a-z][a-z-]*' "$R"/agents/*.md "$R"/skills/
   [ -f "$R/agents/$r.md" ] || [ -d "$R/skills/$r" ] && ok || bad "'$ref' names no agent or skill (typo in an Agent(...) allowlist silently stops dispatch)"
 done
 
+# ---- work kinds (WP0 guards): the plugin is for any kind of work, not only code
+# gq FILE PHRASE...: every phrase must appear in FILE (fixed-string match); one pass or one FAIL per file
+gq() { f=$R/$1; shift; miss=""; for ph in "$@"; do grep -qF -- "$ph" "$f" || miss+=" [$ph]"; done; [ -z "$miss" ] && ok || bad "$f lacks:$miss"; }
+kf=$R/templates/kinds.md; kinds="code document research analysis design plan operations"
+kh=$(sed -n 's/^## \([a-z]*\)$/\1/p' "$kf" | grep -xE 'code|document|research|analysis|design|plan|operations' | tr '\n' ' ')
+[ "$kh" = "code document research analysis design plan operations " ] && ok || bad "kinds-file: templates/kinds.md must have the seven kind headings in order, has: $kh"
+for k in $kinds; do sec=$(awk -v k="$k" '$0=="## " k{f=1;next} /^## /{f=0} f' "$kf")
+  for b in 'done when:' 'eval patterns:' 'reviewer checks:' 'pre-merge checks:'; do grep -q "^- $b" <<<"$sec" && ok || bad "kinds-file: kind $k lacks '- $b'"; done; done
+[ "$(wc -l < "$kf")" -le 120 ] && ok || bad "kinds-file: templates/kinds.md is over 120 lines; every agent that reads it pays for it"
+cl=$(sed -n 's/^kinds="\(.*\)"$/\1/p; s/^kinds=(\(.*\))$/\1/p' "$R/scripts/check-evals.sh" | head -1 | tr -s ' |' ' ' | sed 's/ $//')
+[ "$cl" = "$kinds" ] && ok || bad "kinds-in-sync: the kinds list in scripts/check-evals.sh ('$cl') must equal the headings of templates/kinds.md"
+gq templates/RD.md '**Kind:**' '**Deliverable:**'
+gq templates/evals.md 'pre-merge checks'; ! grep -q 'lint and build pass' "$R/templates/evals.md" && ok || bad "evals-template: still says 'lint and build pass'"
+gq skills/write-eval/SKILL.md 'super-agents template kinds.md' '**Kind:**' 'frontier' 'recommended answer' 'GLOSSARY.md'
+[ "$(grep -c 'Done when' "$R/skills/write-eval/SKILL.md")" -ge 7 ] && ok || bad "write-eval: every numbered step should end with 'Done when' (at least 7)"
+gq skills/write-tickets/SKILL.md 'frontier' 'recommended answer' 'GLOSSARY.md' 'one fresh context' 'before any ticket is written' 'binary'
+gq skills/classify-risk/SKILL.md 'relies on' 'RISK: <level>'
+gq agents/tester.md 'names no server' 'quoted passage' 'unverifiable'
+gq agents/reviewer.md '## Spec' '## Standards' 'Out of scope' 'kinds.md' 'GLOSSARY.md' 'VERDICT: clean'
+for a in builder worker teammate; do gq agents/$a.md 'pre-merge checks'; done; gq agents/builder.md 'GLOSSARY.md'
+gq skills/review-loop/SKILL.md 'setup-project' 'deterministic check'
+gq agents/merger.md 'pre-merge checks' 'no checks configured'
+gq agents/checker.md 'kinds.md' 'no app' 'PORT IN USE'
+gq agents/router.md '**Kind:**'
+gq skills/fix-bug/SKILL.md 'goes red' 'ranked'; gq agents/reproducer.md 'goes red' 'ranked'
+gq templates/review.md '## How to test this project' 'Pre-merge checks:' 'unsupported claim'
+gq skills/setup-project/SKILL.md 'git init' 'Pre-merge checks'
+gq scripts/session-start.sh 'any kind of work'
+gq README.md 'mattpocock/skills'
+# a prompt may not tell the model to run a skill that is user-invoked only (disable-model-invocation): it tells the user, with the slash form
+bad_inv=$(grep -rnE '(Skill tool|invoke|call|run|use)[^.]*super-agents:(mark-ready|review-loop|setup-project)' "$R/agents" "$R/skills" | grep -vE '/super-agents:' | head -3)
+[ -z "$bad_inv" ] && ok || bad "invocation: a prompt tells the model to run a user-only skill: $bad_inv"
+
 # ---- sa-native.sh: finds, fetches and verifies the native helper; never runs an unverified download
 t native-override 0 env SUPER_AGENTS_CORE=/bin/echo "$X/sa-native.sh" hello;    has native-override "hello"
 t sa-install-core 0 $SA install-core;                                             has sa-install-core "sa-core is installed"
