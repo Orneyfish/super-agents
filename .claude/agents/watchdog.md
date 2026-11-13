@@ -2,7 +2,7 @@
 name: watchdog
 description: Background helper the router starts to watch workers and report problems. Only the router starts it.
 tools: Read, Grep, Glob, Bash, Edit, Monitor, SendMessage, TaskStop
-model: sonnet
+model: haiku
 effort: medium
 maxTurns: 400
 autoCompactWindow: 150000
