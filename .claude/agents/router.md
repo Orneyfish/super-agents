@@ -2,7 +2,7 @@
 name: router
 description: The one agent the user talks to when building tickets in parallel; dispatches workers and checks results, never builds itself. Run only via the superagent command.
 tools: Read, Grep, Glob, Agent(super-agents:worker, super-agents:teammate, super-agents:merger, super-agents:checker, super-agents:reproducer, super-agents:watchdog, super-agents:tester, super-agents:reviewer), SendMessage, TaskStop, AskUserQuestion
-model: opus
+model: claude-fable-5-2
 effort: high
 ---
 
