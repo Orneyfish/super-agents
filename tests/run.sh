@@ -619,8 +619,8 @@ done
 for f in "$R"/agents/*.md; do n=$(basename "$f" .md); badfm=""
   for k in $(sed -n '2,/^---$/p' "$f" | sed -n 's/^\([A-Za-z]*\):.*/\1/p'); do case $k in name|description|tools|model|effort|isolation|maxTurns|autoCompactWindow) ;; *) badfm+=" unknown key '$k'";; esac; done
   [[ $(fm "$n" model) =~ ^(sonnet|opus|haiku|inherit|claude-[a-z0-9-]+)$ ]] || badfm+=" model '$(fm "$n" model)'"
-  [[ $(fm "$n" effort) =~ ^(|low|medium|high|xhigh|max)$ ]] || badfm+=" effort '$(fm "$n" effort)'"
-  [[ $(fm "$n" isolation) =~ ^(|worktree)$ ]] || badfm+=" isolation '$(fm "$n" isolation)'"
+  [[ $(fm "$n" effort) =~ ^(low|medium|high|xhigh|max)?$ ]] || badfm+=" effort '$(fm "$n" effort)'"
+  [[ $(fm "$n" isolation) =~ ^(worktree)?$ ]] || badfm+=" isolation '$(fm "$n" isolation)'"
   [[ $(fm "$n" maxTurns)$(fm "$n" autoCompactWindow) =~ ^[0-9]*$ ]] || badfm+=" maxTurns or autoCompactWindow is not a number"
   [ -z "$badfm" ] && ok || bad "agent $n frontmatter:$badfm"
 done
