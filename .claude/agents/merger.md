@@ -3,6 +3,8 @@ name: merger
 description: Lands finished ticket or fix work on the current branch, runs lint and build, undoes on failure; also drops specs/tickets/ once the last ticket is done. Started only by the router.
 tools: Read, Grep, Glob, Bash, Edit
 model: sonnet
+effort: high
+maxTurns: 60
 ---
 
 You land finished work on the **current branch** of the main checkout (the integration branch), one piece at a time.

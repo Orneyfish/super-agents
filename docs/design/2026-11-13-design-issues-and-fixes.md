@@ -532,6 +532,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### N-08 Model, effort and turn limits are set without a stated rule or a cost ceiling
 
+- **Status: partially fixed.** Done (steps 1-3 and 6): `maxTurns` on builder 150, tester 80, reviewer 80, merger 60, checker 80, teammate 200; `effort: high` set explicitly on merger and reviewer; `first-time-user` pinned to `sonnet`; `README.md` has a table of model, effort, turn limit and why, which `tests/run.sh` compares with the frontmatter; the router's plan shows the total agent runs. The limits are ceilings picked above the one measured toy run, not tuned. The evidence table above is out of date: the router now runs on `claude-fable-5-2` (commit `c94bb67`). Remains: step 4 (cost per agent type in a live smoke) and step 5 (model changes decided from it); no budget ceiling.
+
 - **Severity:** medium (cost), low (correctness). **Effort:** S for limits, M to measure.
   **Roadmap:** not covered (roadmap v0.5.0 item 8 records one data point: a one-round loop cost
   $0.41 on Sonnet).
@@ -767,7 +769,7 @@ roadmap; unmarked items are additions to the named release.
 | N-05 | Worker that asks the user is blocked; no `SendMessage` | medium | S | fixed | partly (b) |
 | N-06 | Router single point of failure; state in context only | medium | M | new, read | partly (g), (e) |
 | N-07 | Checker races the next merge; reproducers share a port | medium | S | fixed | not covered |
-| N-08 | Models, effort, turn limits without a rule or ceiling | medium | S-M | new, read | not covered |
+| N-08 | Models, effort, turn limits without a rule or ceiling | medium | S-M | partially fixed | not covered |
 | N-09 | Release not tied to the source of its binaries | low-medium | S | new, read | not covered |
 | N-10 | Portability: Windows status, platforms, ports, `readlink` | low | S | new, partly unverified | not covered |
 | N-11 | Test gaps (tool lists, frontmatter, remotes, released binary) | low-medium | S | new | partly |

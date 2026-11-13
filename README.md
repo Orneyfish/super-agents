@@ -70,7 +70,7 @@ What degrades outside Claude Code: the hooks that stop an agent from saying "don
 
 | Agent | Role |
 |---|---|
-| `router` | The only agent you talk to. Opus, high effort, and **no write or shell tools**: it can only read, start agents and message them. Shows you a run plan and asks before it starts any tickets (name tickets to skip the question, or say "keep going" to stop being asked as more unblock), starts the watchdog, dispatches, checks each result against the ticket's evals, queues merges, relays decisions to you. |
+| `router` | The only agent you talk to. High effort, and **no write or shell tools**: it can only read, start agents and message them. Shows you a run plan and asks before it starts any tickets (name tickets to skip the question, or say "keep going" to stop being asked as more unblock), starts the watchdog, dispatches, checks each result against the ticket's evals, queues merges, relays decisions to you. |
 | `worker` | One solo ticket in its own git worktree: builds, has the tester and reviewer check it, writes `results.md` + `evidence/`, commits on its branch. Sonnet. |
 | `teammate` | One member of an agent team on a `team` ticket. Works in the main checkout on files it owns, agreed first in `contract.md`; the last-named teammate integrates and tests. |
 | `merger` | Lands a solo branch, a team's work, or a fix branch on the current branch: merges without committing, runs lint + build, then commits or aborts; refuses a branch that changed the approved `evals.md`; marks the ticket done. One at a time. |
@@ -80,6 +80,24 @@ What degrades outside Claude Code: the hooks that stop an agent from saying "don
 | `tester` | Runs a ticket's evals exactly as written and returns PASS/FAIL with evidence. Uses `agent-browser` for browser checks, falls back to the Chrome tools. |
 | `builder`, `reviewer` | The review-loop's fresh-context builder and reviewer (workers reuse the reviewer). Both have a `tools` allowlist: no Agent tool, no web tools, no MCP connectors except the reviewer's browser; the reviewer has no Edit or Write. |
 | `first-time-user` | The blind newcomer used by the first-time-user skill. |
+
+**Models, effort and turn limits** (the frontmatter of `agents/*.md`; `tests/run.sh` fails when this table and the files disagree):
+
+| Agent | Model | Effort | maxTurns | Why |
+|---|---|---|---|---|
+| `router` | claude-fable-5-2 | high | none | The orchestrator: it decides what runs, reads every report and makes the acceptance call. It is your own session, so nothing caps its turns. |
+| `worker` | sonnet | high | 200 | Does the building; a gate, a tester and a reviewer follow it. |
+| `teammate` | sonnet | high | 200 | Same work as a worker, shared checkout. |
+| `builder` | sonnet | default | 150 | The review-loop's build step; the tester and reviewer follow it every round. |
+| `tester` | sonnet | default | 80 | Runs written checks literally; no judgement to buy with effort. |
+| `reviewer` | sonnet | high | 80 | The independent check. Same model as the builder: independence comes from the fresh context only. |
+| `merger` | sonnet | high | 60 | Resolves conflicts by hand and nothing reviews its result but lint and build. |
+| `checker` | sonnet | default | 80 | Walks the app as a newcomer. |
+| `reproducer` | sonnet | high | 120 | Has to find a cause, not only a symptom. |
+| `watchdog` | sonnet | medium | 400 | Long-lived; forwards and summarises. |
+| `first-time-user` | sonnet | default | none | Pinned so its cost does not depend on the model of the session that starts it. |
+
+The turn limits are ceilings for an agent that loops, set well above anything seen so far (the one measured run, a toy feature, used 2-3 tool calls per agent); they are not tuned on real projects yet. A solo ticket costs at least five agent runs (worker, tester, reviewer, merger, checker) and up to four tester and four reviewer runs with three fix rounds; the router shows that total in its plan. There is no budget ceiling.
 
 ## Ticket folder
 

@@ -566,6 +566,15 @@ done
 for f in "$R"/agents/*.md; do
   sed -n '2,/^---$/p' "$f" | grep -q '^tools: ' && ! sed -n '2,/^---$/p' "$f" | grep -q '^disallowedTools:' && ok || bad "agent $(basename "$f" .md): needs a tools: allowlist and no disallowedTools"
 done
+# N-08: in auto mode nothing else bounds an agent that loops (the router is the user's own session; the first-time-user is started by hand);
+# and README's table of model, effort and turn limit is what the frontmatter says
+fm() { sed -n '2,/^---$/p' "$R/agents/$1.md" | sed -n "s/^$2: *//p" | head -1; }
+for f in "$R"/agents/*.md; do n=$(basename "$f" .md)
+  case $n in router|first-time-user) ;; *) [[ $(fm "$n" maxTurns) =~ ^[0-9]+$ ]] && ok || bad "agent $n: needs maxTurns";; esac
+  e=$(fm "$n" effort); x=$(fm "$n" maxTurns)
+  grep -qF "| \`$n\` | $(fm "$n" model) | ${e:-default} | ${x:-none} |" "$R/README.md" && ok || bad "README 'Models, effort and turn limits' has no row '| \`$n\` | $(fm "$n" model) | ${e:-default} | ${x:-none} |'"
+done
+grep -q 'at least 5 agent runs each' "$R/agents/router.md" && ok || bad "the router's plan no longer shows the total number of agent runs (N-08)"
 for ref in $(grep -ohE 'super-agents:[a-z][a-z-]*' "$R"/agents/*.md "$R"/skills/*/SKILL.md | sort -u); do r=${ref#super-agents:}
   [ -f "$R/agents/$r.md" ] || [ -d "$R/skills/$r" ] && ok || bad "'$ref' names no agent or skill (typo in an Agent(...) allowlist silently stops dispatch)"
 done

@@ -4,6 +4,7 @@ description: One member of an agent team building a team-mode ticket in the main
 tools: Read, Grep, Glob, Bash, Edit, Write, Agent, Monitor, TodoWrite
 model: sonnet
 effort: high
+maxTurns: 200
 ---
 
 You are one member of a small team building a single ticket. You all work in the main checkout, so the rule that keeps you from overwriting each other is: **you only edit files you own**. The prompt gives you `TICKET_DIR` (the ticket folder, relative to the repo root; you work in the main checkout), the ticket number `NNN`, your area, your teammates' names (yours is your `name`), the port and the test account.
