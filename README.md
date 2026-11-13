@@ -77,7 +77,7 @@ Each piece of work has a kind, set in `RD.md` as `**Kind:**` (missing means `cod
 - **plan**: someone could start step 1 without asking anything, and every goal is measurable.
 - **operations**: the procedure ran on a safe target and the end state was read back; the real target is not touched.
 
-A non-code kind also names its `**Deliverable:**` file. `check-evals --passed` fails unless each deliverable exists in the checkout and is non-empty. The checks each kind uses are in [`templates/kinds.md`](templates/kinds.md).
+A non-code kind also names its `**Deliverable:**` file. `check-evals --passed` fails unless each deliverable is a non-empty regular file in the checkout (not a directory or a symlink); a path under `specs/` or a git-ignored path is refused when the spec is written. The checks each kind uses are in [`templates/kinds.md`](templates/kinds.md).
 
 ## Commands
 
@@ -86,7 +86,7 @@ A non-code kind also names its `**Deliverable:**` file. `check-evals --passed` f
 | `/super-agents:setup-project [path ...]` | Once per project: `review.md`, a super-agents block in `CLAUDE.md` (imports `review.md`, sets the git branch policy), git-ignores run state. Re-running refreshes the block. Takes several paths. |
 | `/super-agents:classify-risk <feature>` | "What happens to a customer if this breaks?" gives low / medium / high. |
 | `/super-agents:write-eval <feature>` | `specs/<feature>/RD.md` + `evals.md` (+ `mockup.html` for UI), validated, then stops for your review. Works for any kind of work (see Kinds of work). |
-| `/super-agents:write-tickets <request>` | Splits a request into tickets, interviews you one question at a time until nothing is left to guess, writes `specs/tickets/NNN-slug/{RD.md,evals.md}` and `BOARD.md`. |
+| `/super-agents:write-tickets <request>` | Splits a request into tickets, interviews you in rounds of at most four questions until nothing is left to guess, writes `specs/tickets/NNN-slug/{RD.md,evals.md}` and `BOARD.md`. |
 | `/super-agents:mark-ready <NNN ...\|all\|dir>` | Your approval step: validates, then marks `draft` → `ready`. |
 | `/super-agents:review-loop <feature\|NNN>` | Builder, tester, reviewer in rounds until every eval passes and review is clean. Max 5 rounds. |
 | `/super-agents:first-time-user <feature>` | A subagent that cannot read the code uses the live app on a throwaway database and reports where it got stuck. |

@@ -24,7 +24,7 @@ Read the section for this work's kind. Whoever relies on the work is its reader,
 
 ## analysis
 - done when: the numbers reproduce from the raw data and answer the question asked.
-- eval patterns: reproduce (run the script from a clean checkout into a temp directory and compare every number in the report); reconcile (rows in equal rows out plus rows dropped, with reasons); known answer (the method run on a small fixture worked by hand in `evals.md`); sanity (totals equal the sum of parts, no value outside the stated range); charts (values from the chart's data file equal the table).
+- eval patterns: reproduce (copy the working tree as it is into a temp directory, delete the generated outputs there, run the script, and compare every number in the report; the work is not committed while it is tested, so a fresh clone would test an older version); reconcile (rows in equal rows out plus rows dropped, with reasons); known answer (the method run on a small fixture worked by hand in `evals.md`); sanity (totals equal the sum of parts, no value outside the stated range); charts (values from the chart's data file equal the table).
 - reviewer checks: a hand-typed number, a filter that drops rows unreported, a chart drawn from different data, a claim of cause from correlation.
 - pre-merge checks: the script's tests or lint, or `none`.
 
@@ -36,7 +36,7 @@ Read the section for this work's kind. Whoever relies on the work is its reader,
 
 ## plan
 - done when: someone could start step 1 without asking anything, and every goal is measurable.
-- eval patterns: cold start (list every question a fresh agent would have to ask before each step; pass when the list is empty); structure (each step has an owner, an order or date, and an observable outcome; each risk has a response); dependencies (no step depends on a later one, no cycle); constraints (budget, dates and limits from `RD.md` add up, with the arithmetic shown).
+- eval patterns: cold start (for each step, the questions written in `evals.md`, at least: what exactly is done, by whom, with what input, and how is it known to be finished; each answered from the plan alone with the quoted passage; fail when a question has no quoted passage or its answer needs a choice the plan does not make); structure (each step has an owner, an order or date, and an observable outcome; each risk has a response); dependencies (no step depends on a later one, no cycle); constraints (budget, dates and limits from `RD.md` add up, with the arithmetic shown).
 - reviewer checks: "improve X" with no measure, a step that needs an undecided choice, totals over budget.
 - pre-merge checks: `none`.
 

@@ -25,7 +25,7 @@ case "$cmd" in
                    # a same-named skill that is not ours (a real folder, or a link elsewhere) is left alone
                    if [ -e "$t" ] || [ -L "$t" ]; then [ "$(readlink -f "$t")" = "$(readlink -f "$s")" ] || { echo "skip   $t exists and is not a link to this repo" >&2; continue; }; fi
                    ln -sfn "${s%/}" "$t" && echo "linked $t"; done; done;;
-  template)      [[ ${1:-} =~ ^[A-Za-z0-9._-]+$ && $1 != *..* ]] || { echo "usage: super-agents template <RD.md|evals.md|review.md>" >&2; exit 2; }
+  template)      [[ ${1:-} =~ ^[A-Za-z0-9._-]+$ && $1 != *..* ]] || { echo "usage: super-agents template <RD.md|evals.md|review.md|kinds.md>" >&2; exit 2; }
                  cat "$root/templates/$1";;
   *) echo "usage: super-agents {check-evals|board|fingerprint|install-core|job-status|setup|commit-tickets|drop-specs|watchdog-loop|launch|link-skills|template} ..." >&2; exit 2;;
 esac

@@ -15,6 +15,7 @@ Read by the super-agents reviewer and by `/code-review`. Keep it short and speci
 - **blocker**: a user loses data/money/access, sees someone else's data, or the feature does not work.
 - **major**: a reachable path breaks or misbehaves, but nothing is lost and a retry works.
 - **minor**: cosmetic, wording, or an unlikely edge.
+- Not code: **blocker** = a required part is missing, a number does not reproduce, a quote is not at its source, or a reader would act on something false; **major** = an unsupported claim, a dead link, or a step described but not run; **minor** = phrasing or layout.
 - Done requires: no open blocker or major (high-risk features: no open minor on auth/data paths either).
 
 ## Ignore
