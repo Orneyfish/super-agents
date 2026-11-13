@@ -226,6 +226,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### C-11 Duplicated mechanisms and drift inside the plugin
 
+- **Status: partially fixed.** Done (v0.4.1 item 9): `scripts/init-project.sh` ignores only the plugin's own files under `specs/<name>/` instead of `specs/*`, and replaces the two legacy lines (`init-specs-own-files-tracked`, `init-legacy-ignore-removed`). One loop rule was aligned by hand: the worker now re-runs every eval after a fix, like the review-loop (C-03). Remains: the three loop definitions are still three prompts (no `templates/loop.md`; round limits 5, 3 and 3); the 140-line first-time-user shell parser; byte compatibility with the deleted Python in `core/src/hookio.rs` and `core/src/board.rs`.
+
 - **Severity:** low to medium. **Effort:** M. **Roadmap:** section (e) and (h); v0.4.1 items 6
   and 9; v0.6.0 items 1, 4 and 6.
 - **Evidence:** three loop definitions with different rules (`skills/review-loop/SKILL.md:55-57`,
@@ -775,7 +777,7 @@ roadmap; unmarked items are additions to the named release.
 | C-08 | Runtime status in tracked files in the main checkout | medium | M | open | v0.5.0 step 1 |
 | C-09 | Recovery contradictions; watchdog repeats; `MERGE_HEAD` | medium | S-M | partially fixed | v0.4.1 item 8; v0.5.0; v0.6.0 |
 | C-10 | Over-powered reviewer, builder, watchdog, checker | medium | S | partially fixed | v0.4.1 item 7; v0.5.0 step 6 |
-| C-11 | Three loops; shell parser; Python compatibility; `specs/*` | low-medium | M | open | v0.4.1 item 9; v0.6.0 |
+| C-11 | Three loops; shell parser; Python compatibility; `specs/*` | low-medium | M | partially fixed | v0.4.1 item 9; v0.6.0 |
 | N-01 | Branch may change other tickets' evals and `review.md` | high | S | new, probed | not covered |
 | N-02 | `RD.md` approved but not fingerprinted | medium | S-M | fixed | not covered |
 | N-03 | Worker gate matches one exact agent name | medium | S | skipped | not covered |

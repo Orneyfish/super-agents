@@ -350,6 +350,15 @@ mkdir -p $T/p8; git -C $T/p8 init -q -b main; git -C $T/p8 config user.email t@t
 $X/init-project.sh $T/p8 >/dev/null; git -C $T/p8 add -A; git -C $T/p8 commit -qm base
 git -C $T/p8 switch -q -c feat/z; mkdir -p $T/p8/specs/z/evidence $T/p8/specs/tickets/001-a; echo x > $T/p8/specs/z/RD.md; echo x > $T/p8/specs/z/evidence/E1.png; echo x > $T/p8/specs/tickets/001-a/RD.md
 git -C $T/p8 add -A; [ "$(git -C $T/p8 ls-files specs)" = specs/tickets/001-a/RD.md ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL git add -A tracked: $(git -C $T/p8 ls-files specs | tr '\n' ' ')"; }
+# C-11 init-specs-own-files-tracked: only the plugin's own files under specs/<name>/ are ignored; a project's own file under specs/ is not
+echo 'openapi: 3' > $T/p8/specs/openapi.yaml; mkdir -p $T/p8/specs/z/notes; echo n > $T/p8/specs/z/notes/own.md
+[ "$(git -C $T/p8 status --porcelain --untracked-files=all -- specs | grep '^??' | sort | tr '\n' ' ')" = "?? specs/openapi.yaml ?? specs/z/notes/own.md " ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL init-specs-own-files-tracked: $(git -C $T/p8 status --porcelain --untracked-files=all -- specs | tr '\n' ' ')"; }
+rm -rf $T/p8/specs/openapi.yaml $T/p8/specs/z/notes
+# C-11 init-legacy-ignore-removed: the two lines older versions added are replaced, once
+mkdir -p $T/p9; git -C $T/p9 init -q -b main; printf 'node_modules/\nspecs/*\n!specs/tickets/\n' > $T/p9/.gitignore
+t init-legacy-ignore-removed 0 $X/init-project.sh $T/p9;           has init-legacy-ignore-removed "removed"
+! grep -qxF 'specs/*' $T/p9/.gitignore && ! grep -qxF '!specs/tickets/' $T/p9/.gitignore && grep -qxF 'node_modules/' $T/p9/.gitignore && grep -qxF 'specs/*/RD.md' $T/p9/.gitignore && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL init-legacy-ignore-removed: $(tr '\n' ' ' < $T/p9/.gitignore)"; }
+t init-legacy-idempotent 0 $X/init-project.sh $T/p9;               hasnt init-legacy-idempotent "removed"; hasnt init-legacy-idempotent "added"
 # drop-specs: the integration branch loses specs/ before the merge, but only once every ticket is done on its committed board
 printf '# Board\n| # | Title | Status | Mode | Runs |\n|---|---|---|---|---|\n| 001 | A | building | solo | alongside |\n' > $T/p8/specs/tickets/BOARD.md; git -C $T/p8 add -A; git -C $T/p8 commit -qm tickets
 printf 'openapi: 3\n' > $T/p8/specs/api.yaml; git -C $T/p8 add -f specs/api.yaml; git -C $T/p8 commit -qm "the project's own specs file"   # tracked before setup: not ours

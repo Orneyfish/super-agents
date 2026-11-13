@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Usage: init-project.sh [dir ...]      default: current dir. Idempotent; only touches git repos.
 # Adds review.md, keeps the super-agents block in CLAUDE.md current (it @-imports review.md), and git-ignores run state
-# and single-feature specs (specs/<name>/), so neither lands in a PR.
+# and the plugin's files of single-feature specs (specs/<name>/RD.md, evals.md, ...), so neither lands in a PR.
 root="$(cd "$(dirname "$0")/.." && pwd)"
 block="$root/templates/claude-block.md"
 
@@ -28,7 +28,13 @@ init_one() {
   done
 
   # specs/tickets stays tracked (worker worktrees only see committed files); 'super-agents drop-specs' removes it before a PR merges
-  for pat in .super-agents/ .job/ .claude/worktrees/ 'specs/*' '!specs/tickets/'; do
+  # Of a single feature's specs/<name>/ only the plugin's own files are ignored: the project may keep files of its own under specs/.
+  # (Ticket files are one level deeper, specs/tickets/NNN-slug/, so these patterns do not reach them.)
+  if grep -qxF 'specs/*' .gitignore 2>/dev/null && grep -qxF '!specs/tickets/' .gitignore; then   # what older versions added: it also ignored the project's own files
+    grep -vxF -e 'specs/*' -e '!specs/tickets/' .gitignore > .gitignore.tmp; mv .gitignore.tmp .gitignore
+    echo "removed specs/* and !specs/tickets/ from $top/.gitignore (replaced by patterns for the plugin's own files)"
+  fi
+  for pat in .super-agents/ .job/ .claude/worktrees/ 'specs/*/RD.md' 'specs/*/evals.md' 'specs/*/.evals.sha256' 'specs/*/results.md' 'specs/*/mockup.html' 'specs/*/evidence/'; do
     grep -qxF "$pat" .gitignore 2>/dev/null && continue
     { [ -n "$(tail -c1 .gitignore 2>/dev/null)" ] && echo; echo "$pat"; } >> .gitignore
     echo "added  $pat to $top/.gitignore"
