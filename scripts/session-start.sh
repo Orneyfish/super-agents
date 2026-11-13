@@ -12,7 +12,11 @@ if top=$(git rev-parse --show-toplevel 2>/dev/null); then
   if [ ! -f "$top/review.md" ]; then
     ctx+=" This git project has no review.md, so it is not set up for super-agents; /super-agents:setup-project sets it up in one step (worth one mention if the user starts feature work)."
   elif [ -f "$st" ] && grep -q '^active: true' "$st"; then
-    ctx+=" A review-loop is active here ($(sed -n 's/^dir: /dir /p;s/^round: /round /p' "$st" | paste -sd' ' -)); .super-agents/state.md holds its state. If this session is continuing that loop, set its 'session:' line to this session's id."
+    # this text reaches every session's context: only the grammar the gate accepts, anything else is left out
+    d=$(sed -n 's/^dir: *//p' "$st" | head -1); [[ $d =~ ^[A-Za-z0-9._/-]+$ && $d != *..* ]] || d=
+    r=$(sed -n 's/^round: *//p' "$st" | head -1); [[ $r =~ ^[0-9]{1,3}$ ]] || r=
+    what="${d:+dir $d }${r:+round $r}"
+    ctx+=" A review-loop is active here (${what% }); .super-agents/state.md holds its state. If this session is continuing that loop, set its 'session:' line to this session's id."
   fi
   [ -f "$top/specs/tickets/BOARD.md" ] && ctx+=" A ticket board exists at specs/tickets/BOARD.md; ready tickets are built in parallel by the router the user starts with 'superagent', not in an ordinary session."
 fi

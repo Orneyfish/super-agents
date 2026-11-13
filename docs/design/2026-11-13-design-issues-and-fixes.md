@@ -37,6 +37,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### C-01 Shell arithmetic runs repository content in both gates
 
+- **Status: fixed.** Counters accept only `^[0-9]{1,3}$` (`eval-gate.sh`, `worker-gate.sh`); a tracked or symlinked `state.md` / `.job/status.json` is ignored with a fixed notice; `session-start.sh` applies the `dir` and `round` grammar; `job-status --name` has a grammar. Tests: `gate-arith-injection`, `gate-tracked-state-ignored`, `gate-symlink-state-ignored`, `worker-gate-arith-injection`, `job-name-grammar`, `session-hostile-dir`. Not done from roadmap (a): the `note`, `ignore` and `app_url` grammars and the `realpath under specs/` rule for `dir`.
+
 - **Severity:** high. **Effort:** S. **Roadmap:** section (a); v0.4.1 item 1.
 - **Evidence:** `scripts/eval-gate.sh:24-28` (`$((n+1))` on `gate_blocks` from `state.md`);
   `scripts/worker-gate.sh:15-17` (same on `.job/gate_blocks`); `scripts/session-start.sh:15`
@@ -729,7 +731,7 @@ roadmap; unmarked items are additions to the named release.
 
 | ID | Issue | Severity | Effort | Status | Roadmap |
 |---|---|---|---|---|---|
-| C-01 | Shell arithmetic and prompt text from repo content | high | S | open | v0.4.1 item 1 |
+| C-01 | Shell arithmetic and prompt text from repo content | high | S | fixed | v0.4.1 item 1 |
 | C-02 | `done` not gated; agent owns releases; re-fingerprint | high | M | open | v0.5.0 steps 3, 5 |
 | C-03 | Evidence not bound to code; self-certified results; first row wins | high | L | open | v0.5.0 steps 4, 7 |
 | C-04 | Gates fail open; trust agent-written `dir`; launcher | high | S-M | open | v0.4.1 items 4-6; v0.5.0 step 5 |

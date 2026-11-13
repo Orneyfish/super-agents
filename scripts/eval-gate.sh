@@ -12,6 +12,10 @@ in=$(cat); cwd=$(get_json cwd <<<"$in"); st="$cwd/.super-agents/state.md"
 get() { sed -n "s/^$1: *//p" "$st" | head -1; }
 [ "$(get active)" = true ] || exit 0
 [ "$(get awaiting_user)" = true ] && exit 0           # waiting on the human, not claiming done
+# a state file the repository ships (git-tracked) or a symlink is not a loop the user started: ignore it, with fixed text only
+if [ -L "$st" ] || [ -L "$cwd/.super-agents" ] || git -C "$cwd" ls-files --error-unmatch -- "$st" >/dev/null 2>&1; then
+  "$here/sa-native.sh" hookio emit message "super-agents: .super-agents/state.md is tracked by git or a symlink, so it is ignored and no eval gate runs. Remove it from git (git rm --cached) to use the review-loop here."; exit 0
+fi
 dir=$(get dir); [[ $dir =~ ^[A-Za-z0-9._/-]+$ && $dir != *..* && -d "$cwd/$dir" ]] || exit 0
 sid=$(get_json session_id <<<"$in"); owner=$(get session)
 # one append (a missing final newline would otherwise merge the claim into the last line); re-read: with two claims at once the first line wins
@@ -21,7 +25,7 @@ if [ -z "$owner" ] && [ -n "$sid" ]; then nl=; [ -n "$(tail -c1 "$st")" ] && nl=
 out=$("$(dirname "$0")/check-evals.sh" "$cwd/$dir" --passed) && exit 0
 left=$(grep -c '^FAIL' <<<"$out")
 
-n=$(get gate_blocks); n=${n:-0}
+n=$(get gate_blocks); [[ $n =~ ^[0-9]{1,3}$ ]] && n=$((10#$n)) || n=0   # never arithmetic on text from the file; garbage counts as 0, so the gate blocks
 if [ "$n" -ge 3 ]; then
   "$here/sa-native.sh" hookio emit message "super-agents: eval gate released after 3 blocks; evals still unmet."; exit 0
 fi
