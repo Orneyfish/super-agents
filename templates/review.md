@@ -8,6 +8,7 @@ Read by the super-agents reviewer and by `/code-review`. Keep it short and speci
 - A crash, unhandled error, or silent failure on a path a user can actually reach.
 - A missing or bypassable auth/permission check; a secret in code, logs or a response.
 - UI that does not match `specs/<feature>/mockup.html` at desktop or mobile width.
+- Not code (delete what does not apply): an unsupported claim; a number that does not reproduce; a required part that is missing; content nobody asked for; a step that was described but not run.
 - TODO: add this project's own failures (money, PII, migrations, external APIs, ...).
 
 ## Severity
@@ -22,12 +23,13 @@ Read by the super-agents reviewer and by `/code-review`. Keep it short and speci
 - Code the change did not touch, unless the change made it reachable.
 
 ## Report format
-One line per finding: `F<n> [severity] [class] file:line - what is wrong - how to reproduce`.
+One line per finding: `F<n> [severity] [class] file:line - what is wrong - how to reproduce`. For a document the location is `file: section` instead of `file:line`.
 `class` names the kind of mistake, not the instance (e.g. `missing-auth-check`, `unhandled-empty-state`, `off-by-one`, `n-plus-one-query`), so it can be fixed everywhere it occurs.
 Only report what you can show with evidence. Nothing found: write `no findings`.
 
 ## How to test this project
 - TODO: run command, test command, lint and build commands, how to start the app on a chosen port with its own temporary database / data dir, how to create a test account.
+- Pre-merge checks: TODO commands run before work is merged (lint and build for code; a link or style check for documents), or none.
 - Ports and accounts (change here if your app needs different ones): main checkout 3000 (account t000); bug reproducer 3090 (t090); ticket NNN on port 3100+NNN (account tNNN), so parallel tickets never share state.
 
 ## Rules learned over time

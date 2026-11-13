@@ -7,6 +7,8 @@ disable-model-invocation: true
 
 The builder and you both know how the feature is meant to work, so you will miss what a newcomer trips on. Send in someone who does not know.
 
+This is for live apps only; a document is checked by the reader test in its evals, because this agent cannot read files.
+
 **Harness note.** `super-agents:first-time-user` is the definition in `agents/first-time-user.md`. Outside Claude Code, start a fresh session with that file's body as its instructions; the code-read block is a Claude Code hook, so elsewhere it is only the agent's own rule, and you should not give it a project directory to browse.
 
 1. **How to run it.** You may read the code, README and scripts to find the start command, port and how to point the app at a throwaway database or data directory. The subagent may not.
