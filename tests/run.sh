@@ -581,6 +581,11 @@ done
 
 # ---- repo consistency (static): things that break the plugin silently if they drift
 ok() { pass=$((pass+1)); }; bad() { fail=$((fail+1)); echo "FAIL $*"; }
+# a frontmatter value holding ': ' must be quoted, or strict YAML parsers (other harnesses, the Agent Skills spec) reject the whole file; Claude Code alone tolerates it
+for f in "$R"/skills/*/SKILL.md "$R"/agents/*.md; do
+  badfm=$(sed -n '2,/^---$/p' "$f" | sed '$d' | grep -E '^[A-Za-z-]+: ' | sed -E 's/^[A-Za-z-]+: //' | grep -E ': ' | grep -vE "^['\"]" | head -1)
+  [ -z "$badfm" ] && ok || bad "$f: an unquoted frontmatter value contains ': ' (invalid YAML): ${badfm:0:70}"
+done
 # N-01: the merger's approved-file check (taken from merger.md) rejects a branch that touches another ticket's evals or review.md, and accepts its own results.md
 m=$T/n01; git init -q -b main $m; mkdir -p $m/specs/tickets/001-a $m/specs/tickets/002-b; (cd $m && git config user.email t@t && git config user.name t \
   && for n in 001-a 002-b; do echo e > specs/tickets/$n/evals.md; done && echo r > review.md && git add . && git commit -qm base \
