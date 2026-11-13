@@ -114,7 +114,20 @@ t eval-rd-tampered 1 $X/check-evals.sh $D --passed;               has eval-rd-ta
 cp $T/rd.bak $D/RD.md; $BOARD set $D building >/dev/null; t eval-rd-status-change-ok 0 $X/check-evals.sh $D --passed
 # a one-line fingerprint (approved by an older version) still passes: no re-approval needed
 cp $D/.evals.sha256 $T/fp2.bak; sed -n 1p $T/fp2.bak > $D/.evals.sha256; sedi 's/Risk:\*\* low/Risk:** high/' $D/RD.md
-t eval-rd-one-line-fingerprint 0 $X/check-evals.sh $D --passed;   cp $T/rd.bak $D/RD.md; $BOARD set $D ready >/dev/null
+t eval-rd-one-line-fingerprint 0 $X/check-evals.sh $D --passed;   cp $T/rd.bak $D/RD.md; cp $T/fp2.bak $D/.evals.sha256
+# C-02: the fingerprint is written when a draft is approved, not on every 'ready': editing the evals and running 'board set ready' again
+# (from ready or building) no longer makes the edit look approved. Approving again is explicit: back to draft first.
+printf '\n<!-- loosened -->\n' >> $D/evals.md; $BOARD set $D ready >/dev/null; $BOARD set $D building >/dev/null; $BOARD set $D ready >/dev/null
+t fingerprint-not-rewritten 1 $X/check-evals.sh $D --passed;       has fingerprint-not-rewritten "changed after the user approved"
+$BOARD set $D draft >/dev/null; $BOARD set $D ready >/dev/null;    t fingerprint-reapproved-from-draft 0 $X/check-evals.sh $D --passed
+cp $T/evals.bak $D/evals.md; $BOARD set $D draft >/dev/null; $BOARD set $D ready >/dev/null
+# C-02 done-path-is-gated: 'done' is checked on the status change itself, whatever state.md says and whether or not a hook runs
+$BOARD set $D building >/dev/null; sedi 's/| E2 | pass |/| E2 | fail |/' $D/results.md
+t done-path-is-gated 1 $BOARD set $D "done";                         has done-path-is-gated "E2 is not passing"; grep -q '^\*\*Status:\*\* building' $D/RD.md && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL done-path-is-gated: the status changed"; }
+t done-path-is-gated-by-number 1 $BOARD set 001 "done";              has done-path-is-gated-by-number "E2 is not passing"
+sedi 's/| E2 | fail |/| E2 | pass |/' $D/results.md
+t done-when-passing 0 $BOARD set 001 "done";                         has done-when-passing "ok 001 -> done"; $BOARD set $D ready >/dev/null
+grep -q 'board set <dir or NNN> done` first' "$R/skills/review-loop/SKILL.md" && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL the review-loop sets active: false before the gated 'board set done' (C-02)"; }
 grep -q 'only while' "$R/skills/classify-risk/SKILL.md" && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL classify-risk may rewrite the Risk line of an approved RD.md (N-02)"; }
 # a worker's worktree copy: even with its own fingerprint file deleted, the main checkout's copy still catches the change
 git worktree add -q $T/wt2 -b w2 >/dev/null 2>&1; mkdir -p $T/wt2/$D; cp -R $D/. $T/wt2/$D/; rm -f $T/wt2/$D/.evals.sha256

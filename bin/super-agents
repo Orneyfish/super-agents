@@ -5,7 +5,13 @@
 root="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; cmd="${1:-}"; [ $# -gt 0 ] && shift
 case "$cmd" in
   check-evals)   exec "$root/scripts/check-evals.sh" "$@";;
-  board)         exec "$root/scripts/sa-native.sh" board "$@";;
+  board)         # 'done' claims the evals passed, so it is checked here, on the status change itself, not only when a turn happens to end.
+                 # shortcut: checked in this wrapper, so 'sa-core board set' called directly skips it; move it into sa-core with the verify port.
+                 if [ "${1:-}" = set ] && [ "${3:-}" = "done" ]; then
+                   d=$2; [[ $d =~ ^[0-9]{3}$ ]] && for x in "${4:-$("$root/scripts/sa-native.sh" board root)}"/specs/tickets/"$d"-*/; do d=${x%/}; done
+                   out=$("$root/scripts/check-evals.sh" "$d" --passed) || { echo "$out"; echo "FAIL: $2 is not marked done: every eval must pass with evidence in results.md first" >&2; exit 1; }
+                 fi
+                 exec "$root/scripts/sa-native.sh" board "$@";;
   fingerprint)   exec "$root/scripts/sa-native.sh" fingerprint "$@";;
   install-core)  SA_NATIVE_FORCE=1 "$root/scripts/sa-native.sh" --version || exit 3; echo "sa-core is installed for this machine";;
   job-status)    exec "$root/scripts/job-status.sh" "$@";;

@@ -56,6 +56,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### C-02 The transition to `done` is not gated, and the gated agent owns every release
 
+- **Status: partially fixed.** First steps, backward compatible: (1) `super-agents board set <X> done` runs `check-evals --passed` itself and refuses with the `FAIL` lines, so `done` is gated on the status change whatever `state.md` says (`done-path-is-gated`; the check is in `bin/super-agents`, so `sa-core board set` called directly skips it until `verify` is ported); the review-loop runs it before setting `active: false`, and the merger reports a refusal. (2) The fingerprint is written when a draft is approved or when none exists, not on a later `ready` (`core/src/board.rs`; `fingerprint-not-rewritten`, `core/tests/board_set.rs`); re-approval goes through `draft`, which `mark-ready` now says. Remains: the edge table (any status is still reachable from any other except as above), `loop` and `job` subcommands replacing hand edits of `state.md`, the self-service releases (`awaiting_user`, the block counters, `blocked`), the transition log, and `draft` then `ready` by an agent, which still re-approves (roadmap rule 6).
+
 - **Severity:** high. **Effort:** M. **Roadmap:** section (b); v0.5.0 steps 3 and 5.
 - **Evidence:** `skills/review-loop/SKILL.md:63` sets `active: false` first, and
   `scripts/eval-gate.sh:13` exits when `active` is not `true`. `core/src/board.rs:243-246` accepts
@@ -298,7 +300,7 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### N-02 `RD.md` is approved by the user but not fingerprinted
 
-- **Status: fixed.** `board set <X> ready` writes a second line to `.evals.sha256` (`<hex>  RD.md`): sha256 of `RD.md` with CRLF read as LF and the first `**Status:**` line removed (`core/src/board.rs` `fingerprint_rd`, `sa-core fingerprint-rd`). `scripts/check-evals.sh --passed` compares it and fails with "RD.md changed after the user approved it"; a one-line file from an older version still passes. `classify-risk` writes the Risk line only while the status is `draft`. Tests: `core/tests/board_set.rs`, `eval-rd-tampered`, `eval-rd-status-change-ok`, `eval-rd-one-line-fingerprint`. Limit: a later `board set <X> ready` still re-fingerprints both files when run from `draft` (C-02).
+- **Status: fixed.** `board set <X> ready` writes a second line to `.evals.sha256` (`<hex>  RD.md`): sha256 of `RD.md` with CRLF read as LF and the first `**Status:**` line removed (`core/src/board.rs` `fingerprint_rd`, `sa-core fingerprint-rd`). `scripts/check-evals.sh --passed` compares it and fails with "RD.md changed after the user approved it"; a one-line file from an older version still passes. `classify-risk` writes the Risk line only while the status is `draft`. Tests: `core/tests/board_set.rs`, `eval-rd-tampered`, `eval-rd-status-change-ok`, `eval-rd-one-line-fingerprint`. Both lines are written when a draft is approved, not on a later `ready` (C-02).
 
 - **Severity:** medium. **Effort:** S to M. **Roadmap:** not covered (roadmap (d) rule 1 denies
   Edit/Write on `RD.md`, which it states is a convenience that matched nothing live).
@@ -762,7 +764,7 @@ roadmap; unmarked items are additions to the named release.
 | ID | Issue | Severity | Effort | Status | Roadmap |
 |---|---|---|---|---|---|
 | C-01 | Shell arithmetic and prompt text from repo content | high | S | fixed | v0.4.1 item 1 |
-| C-02 | `done` not gated; agent owns releases; re-fingerprint | high | M | open | v0.5.0 steps 3, 5 |
+| C-02 | `done` not gated; agent owns releases; re-fingerprint | high | M | partially fixed | v0.5.0 steps 3, 5 |
 | C-03 | Evidence not bound to code; self-certified results; first row wins | high | L | open | v0.5.0 steps 4, 7 |
 | C-04 | Gates fail open; trust agent-written `dir`; launcher | high | S-M | partially fixed | v0.4.1 items 4-6; v0.5.0 step 5 |
 | C-05 | Worktrees start from the remote default branch | high | S | fixed | v0.4.1 item 2 |

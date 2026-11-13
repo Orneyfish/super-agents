@@ -274,6 +274,7 @@ pub fn set_status(root: &Path, target: &str, status: &str) -> Result<(), String>
 
     let rd = dir.join("RD.md");
     let text = fs::read_to_string(&rd).map_err(|e| format!("{}: {e}", rd.display()))?;
+    let was = STATUS_WORD.captures(&text).map(|c| c[1].to_string());
     let line = format!("**Status:** {status}");
     let updated = if STATUS_LINE.is_match(&text) {
         STATUS_LINE
@@ -285,12 +286,15 @@ pub fn set_status(root: &Path, target: &str, status: &str) -> Result<(), String>
     };
     fs::write(&rd, updated).map_err(|e| format!("{}: {e}", rd.display()))?;
 
-    // the fingerprint of what the user approved; check-evals.sh --passed compares against it
+    // The fingerprint of what the user approved; check-evals.sh --passed compares against it. It is written when a draft is
+    // approved (or when there is none yet), not on every `ready`: setting an approved ticket `ready` again must not make
+    // an edit made since look approved. Approving again goes through `draft`.
     let evals = dir.join("evals.md");
-    if status == "ready" && evals.exists() {
+    let fp = dir.join(".evals.sha256");
+    let approved = matches!(was.as_deref(), Some("ready" | "building" | "done")) && fp.exists();
+    if status == "ready" && evals.exists() && !approved {
         let hex = fingerprint(&evals).map_err(|e| format!("{}: {e}", evals.display()))?;
         let rd_hex = fingerprint_rd(&rd).map_err(|e| format!("{}: {e}", rd.display()))?;
-        let fp = dir.join(".evals.sha256");
         // line 1 is all that older versions wrote and read; line 2 covers RD.md
         fs::write(&fp, format!("{hex}\n{rd_hex}  RD.md\n"))
             .map_err(|e| format!("{}: {e}", fp.display()))?;

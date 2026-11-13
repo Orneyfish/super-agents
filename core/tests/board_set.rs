@@ -62,6 +62,39 @@ fn set_a_ticket_updates_rd_md_the_board_row_and_the_fingerprint() {
 }
 
 #[test]
+fn the_fingerprint_is_written_when_a_draft_is_approved_and_not_on_a_later_ready() {
+    let t = fixture();
+    let root = t.path();
+    let d = root.join("specs/tickets/001-found");
+    let set =
+        |status: &str| assert_eq!(sa(root, &["board", "set", "001", status, s(root)]).code, 0);
+    set("ready");
+    let approved = read(&d.join(".evals.sha256"));
+    fs::write(d.join("evals.md"), "# E\n\n## E1: looser\n").unwrap();
+    set("ready");
+    set("building");
+    set("ready");
+    assert_eq!(
+        read(&d.join(".evals.sha256")),
+        approved,
+        "an edit is not approved by setting ready again"
+    );
+    set("draft");
+    set("ready");
+    assert_ne!(
+        read(&d.join(".evals.sha256")),
+        approved,
+        "draft -> ready approves"
+    );
+    fs::remove_file(d.join(".evals.sha256")).unwrap();
+    set("ready");
+    assert!(
+        d.join(".evals.sha256").exists(),
+        "a ticket approved before fingerprints existed gets one"
+    );
+}
+
+#[test]
 fn set_a_ticket_directory_keeps_its_board_row_in_sync() {
     let t = fixture();
     let root = t.path();
