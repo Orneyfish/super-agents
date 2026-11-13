@@ -7,7 +7,16 @@ A Claude Code plugin that makes agents prove their work before calling it done, 
 
 ## Install
 
-Needs `bash`, `git` and `curl` (Linux or macOS). The ticket board and the hooks' JSON run on `sa-core`, a small native helper: the first time it is needed it is downloaded for your platform from this repo's GitHub release and checked against `dist/checksums/`, then again every time it runs (a cached copy that no longer matches is deleted and fetched again). `super-agents install-core` does that up front; `cargo build --release --manifest-path core/Cargo.toml` builds it from source instead; `SUPER_AGENTS_CORE=<path>` uses a binary you provide, and `SUPER_AGENTS_CORE_URL=<base URL>` downloads from a mirror, and `SUPER_AGENTS_CORE_TIMEOUT=<seconds>` caps each download attempt (default 20). After a failed download the hooks do not try again for 10 minutes; `super-agents install-core` retries at once. Without `sa-core` the hooks, including the done-gates, are switched off and let everything through; each session then says so.
+Needs `bash`, `git` and `curl`.
+
+| Platform | Status |
+|---|---|
+| Linux (x86_64, arm64) | Supported: tested in CI and run live. |
+| macOS 12.3 or newer (Intel, Apple silicon) | Supported: tested in CI (`macos-latest`). 12.3 is the minimum because the scripts use `readlink -f`; older versions were not tested. |
+| Windows (x86_64) under Git Bash | Tested in CI only (the shell suite and the Rust tests); never run live, and the install steps below use `ln -s`. |
+| Anything else (Windows on ARM, other CPUs, the BSDs) | No prebuilt `sa-core`: build it with cargo, or the hooks are off (each session names the platform). |
+
+The ticket board and the hooks' JSON run on `sa-core`, a small native helper: the first time it is needed it is downloaded for your platform from this repo's GitHub release and checked against `dist/checksums/`, then again every time it runs (a cached copy that no longer matches is deleted and fetched again). `super-agents install-core` does that up front; `cargo build --release --manifest-path core/Cargo.toml` builds it from source instead; `SUPER_AGENTS_CORE=<path>` uses a binary you provide, and `SUPER_AGENTS_CORE_URL=<base URL>` downloads from a mirror, and `SUPER_AGENTS_CORE_TIMEOUT=<seconds>` caps each download attempt (default 20). After a failed download the hooks do not try again for 10 minutes; `super-agents install-core` retries at once. Without `sa-core` the hooks, including the done-gates, are switched off and let everything through; each session then says so.
 
 **Claude Code** (everything works: skills, hooks, router and workers):
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SessionStart: put the working agreement in every session; nudge un-set-up git projects; resume an active loop.
 here="$(cd "$(dirname "$0")" && pwd)"
-"$here/sa-native.sh" --version >/dev/null 2>&1 || { echo "super-agents: its native helper sa-core is not available here, so its hooks (the done-gates) are switched off. Run 'super-agents install-core' to see why."; exit 0; }
+why=$("$here/sa-native.sh" --version 2>&1 >/dev/null) || { echo "super-agents: its native helper sa-core is not available here, so its hooks (the done-gates) are switched off. Run 'super-agents install-core' to see why.${why:+ The launcher said: $why}"; exit 0; }
 in=$(cat); cwd=$("$here/sa-native.sh" hookio get cwd <<<"$in"); sid=$("$here/sa-native.sh" hookio get session_id <<<"$in"); cd "${cwd:-.}" 2>/dev/null || exit 0
 
 ctx="The super-agents plugin is active for this user. Working agreement: a task counts as done only when proven with output run in this session (test results, screenshot, eval pass), not on the agent's own say-so. For non-trivial user-visible features in git projects the flow is /super-agents:write-eval, then /super-agents:review-loop; for several features at once, /super-agents:write-tickets, /super-agents:mark-ready, then the user runs the 'superagent' command in a terminal. Also available: :classify-risk, :first-time-user, :fix-bug, :setup-project."

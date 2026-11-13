@@ -647,6 +647,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### N-10 Portability: what is supported is narrower and vaguer than the code suggests
 
+- **Status: partially fixed.** Done: `README.md` "Install" has a platform table (item 1, with the macOS 12.3 minimum of item 3); `scripts/session-start.sh` passes on the launcher's reason, which names the platform (item 2, `session-names-platform`); the checker refuses a port something else already serves and replies `PORT IN USE` (item 4, checker half). Remains: the tester half of item 4 (it still uses whatever answers on its port; changing that alone would stall a review-loop whose builder left a server running, so it goes with roadmap (c)); item 5, the hook's per-call time on Windows, was not measured. The `readlink -f` claim for macOS before 12.3 is still untested.
+
 - **Severity:** low. **Effort:** S. **Roadmap:** not covered (the roadmap notes everything was
   observed on Linux only, `design-changes.md:720`).
 - **Evidence and failure, per item:**
@@ -771,7 +773,7 @@ roadmap; unmarked items are additions to the named release.
 | N-07 | Checker races the next merge; reproducers share a port | medium | S | fixed | not covered |
 | N-08 | Models, effort, turn limits without a rule or ceiling | medium | S-M | partially fixed | not covered |
 | N-09 | Release not tied to the source of its binaries | low-medium | S | new, read | not covered |
-| N-10 | Portability: Windows status, platforms, ports, `readlink` | low | S | new, partly unverified | not covered |
+| N-10 | Portability: Windows status, platforms, ports, `readlink` | low | S | partially fixed | not covered |
 | N-11 | Test gaps (tool lists, frontmatter, remotes, released binary) | low-medium | S | new | partly |
 
 22 issues: 11 carried over (6 high, 4 medium, 1 low-medium) and 11 new (1 high, 7 medium,

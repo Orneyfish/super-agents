@@ -611,6 +611,11 @@ for i in 0 2 4 6; do h=${gate_in[$i]}; j=${gate_in[$((i+1))]}
   [ $rc = 0 ] && ok || bad "$h exited $rc without sa-core"; has "$h-no-core" "sa-core"
   hasnt "$h-no-core" '"decision": "block"'; hasnt "$h-no-core" '"permissionDecision": "deny"'
 done
+# N-10: on a platform with no prebuilt sa-core the session is told which platform, not only that the hooks are off
+mkdir -p $T/un; printf '#!/bin/sh\ncase "$1" in -s) echo Plan9;; -m) echo mips;; esac\n' > $T/un/uname; chmod +x $T/un/uname
+LAST=$(PATH="$T/un:$PATH" XDG_CACHE_HOME=$T/cache "$F/scripts/session-start.sh" <<<"${gate_in[7]}" 2>/dev/null); has session-names-platform "no prebuilt sa-core for Plan9-mips"
+grep -q 'macOS 12.3' "$R/README.md" && grep -q 'Git Bash' "$R/README.md" && ok || bad "README has no platform support table (N-10)"
+grep -q 'PORT IN USE' "$R/agents/checker.md" && grep -q 'PORT IN USE' "$R/agents/router.md" && ok || bad "the checker no longer refuses a port that something else already serves (N-10)"
 LAST=$("$X/eval-gate.sh" <<<"${gate_in[1]}");        has eval-gate-with-core '"decision": "block"'
 LAST=$("$X/worker-gate.sh" <<<"${gate_in[3]}");      has worker-gate-with-core '"decision": "block"'
 LAST=$("$X/block-code-reads.sh" <<<"${gate_in[5]}"); has block-code-reads-with-core '"permissionDecision": "deny"'
