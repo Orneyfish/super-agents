@@ -177,7 +177,7 @@ kd() { sed "s|^\*\*Risk:\*\* low|&\n$2|" $1/RD.md > $1/RD.new; mv $1/RD.new $1/R
 K=$T/k1; mkfix $K; t kind-missing-is-code 0 $X/check-evals.sh $K
 kd $K '**Kind:** banana'; t kind-unknown 1 $X/check-evals.sh $K;     has kind-unknown "must be one of"
 sedi 's/banana/document/' $K/RD.md; t kind-document-no-deliverable 1 $X/check-evals.sh $K; has kind-document-no-deliverable "needs '**Deliverable:**"
-for bd in '../x.md' '/etc/passwd' 'specs/a.md' 'a/../b.md' 'a;b.md'; do sedi '/^\*\*Deliverable:/d' $K/RD.md; kd $K "**Deliverable:** $bd"; t "deliverable-rejected-$bd" 1 $X/check-evals.sh $K; has "deliverable-rejected-$bd" "must be a path inside the repository"; done
+for bd in '../x.md' '/etc/passwd' 'specs/a.md' 'a/../b.md' 'a;b.md' './a.md' '.' 'Specs/a.md' '.git/HEAD' 'a//b.md' 'docs/'; do sedi '/^\*\*Deliverable:/d' $K/RD.md; kd $K "**Deliverable:** $bd"; t "deliverable-rejected-$bd" 1 $X/check-evals.sh $K; has "deliverable-rejected-$bd" "must be a path inside the repository"; done
 sedi '/^\*\*Deliverable:/d' $K/RD.md; kd $K '**Deliverable:** `reports/Q3 churn.md`, `data/out.csv`'; t deliverable-backticks-ok 0 $X/check-evals.sh $K   # models write paths in backticks
 sedi '/^\*\*Deliverable:/d' $K/RD.md; kd $K '**Deliverable:** `reports/q3.md`, one page (450 words).'; t deliverable-trailing-prose 1 $X/check-evals.sh $K; has deliverable-trailing-prose "must be a path inside the repository"
 sedi '/^\*\*Deliverable:/d' $K/RD.md; kd $K '**Deliverable:** reports/Q3 churn.md, data/out.csv'; t deliverable-ok 0 $X/check-evals.sh $K
@@ -186,6 +186,14 @@ sedi 's/document/code/' $K/RD.md; t kind-code-deliverable-optional 0 $X/check-ev
 git -C $K init -q -b main; fp $K; t deliverable-missing 1 $X/check-evals.sh $K --passed;   has deliverable-missing "does not exist or is empty"
 mkdir -p $K/reports $K/data; : > "$K/reports/Q3 churn.md"; echo a > $K/data/out.csv; t deliverable-empty 1 $X/check-evals.sh $K --passed; has deliverable-empty "reports/Q3 churn.md"
 echo ok > "$K/reports/Q3 churn.md"; t deliverable-present 0 $X/check-evals.sh $K --passed
+# --passed: a directory, a symlink or a symlinked folder is not the deliverable; a git-ignored path is refused when the spec is written
+rm $K/data/out.csv; mkdir $K/data/out.csv; echo a > $K/data/out.csv/f; t deliverable-directory 1 $X/check-evals.sh $K --passed; has deliverable-directory "must be a regular file"
+rm -rf $K/data; mkdir $K/data $T/outside; echo a > $T/outside/out.csv; ln -s $T/outside/out.csv $K/data/out.csv 2>/dev/null
+if [ -L $K/data/out.csv ]; then t deliverable-symlink 1 $X/check-evals.sh $K --passed; has deliverable-symlink "must be a regular file"
+  rm -rf $K/data; ln -s $T/outside $K/data; t deliverable-symlinked-folder 1 $X/check-evals.sh $K --passed; has deliverable-symlinked-folder "must be a regular file"
+else skip "no symlinks"; fi
+rm -rf $K/data; mkdir $K/data; echo a > $K/data/out.csv; t deliverable-regular-again 0 $X/check-evals.sh $K --passed
+echo 'data/' > $K/.gitignore; t deliverable-ignored 1 $X/check-evals.sh $K; has deliverable-ignored "is git-ignored"; rm $K/.gitignore
 N=$T/k2; mkfix $N/specs/tickets/001-x; kd $N/specs/tickets/001-x '**Kind:** document'; kd $N/specs/tickets/001-x '**Deliverable:** report.md'
 git -C $N init -q -b main; git -C $N add -A >/dev/null; git -C $N -c user.email=t@t -c user.name=t commit -qm base
 mkdir -p $N/.claude; git -C $N worktree add -q $N/.claude/worktrees/w -b w; NW=$N/.claude/worktrees/w/specs/tickets/001-x

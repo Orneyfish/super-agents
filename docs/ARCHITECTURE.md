@@ -253,9 +253,9 @@ are not reachable through the dispatcher; only `hooks/hooks.json` runs them.
 
 | File | Used by |
 |---|---|
-| `templates/RD.md` | write-eval step 1, via `super-agents template RD.md`. |
-| `templates/kinds.md` | write-eval (`super-agents template kinds.md`); the reviewer (`agents/reviewer.md`) and the checker (`agents/checker.md`) read it for the ticket's kind. Its seven `## <kind>` headings must equal the `kinds=` list in `scripts/check-evals.sh`. |
-| `templates/evals.md` | write-eval step 3. |
+| `templates/RD.md` | write-eval step 3, via `super-agents template RD.md`. |
+| `templates/kinds.md` | write-eval (`super-agents template kinds.md`); the reviewer (`agents/reviewer.md`) and the checker (`agents/checker.md`) read it for the ticket's kind. fix-bug (`skills/fix-bug/SKILL.md`) and the reproducer (`agents/reproducer.md`) point to it for bugs in work that is not code. Its seven `## <kind>` headings must equal the `kinds=` list in `scripts/check-evals.sh`. |
+| `templates/evals.md` | write-eval step 5. |
 | `templates/review.md` | `init-project.sh:11` copies it to the project root; read by reviewer, tester, merger, checker for failure rules, ports and the lint, build and test commands. |
 | `templates/claude-block.md` | `init-project.sh:15-28` inserts or refreshes it between the `SUPER_AGENTS_START` and `SUPER_AGENTS_END` markers. It `@`-imports `review.md` (`:4`). |
 
@@ -309,12 +309,12 @@ One validator, `scripts/check-evals.sh`, in three strengths:
 
 | Call | Checks | Lines |
 |---|---|---|
-| `check-evals <dir>` | `RD.md` and `evals.md` exist; valid Status and Risk; `**Kind:**` is one of the seven kinds in `templates/kinds.md` (missing = `code`); a non-code kind names a `**Deliverable:**`, each a repo-relative path with no `..`, not absolute and not under `specs/`; at least one `FR-`/`NFR-` line; every requirement named in some eval's `covers:`; `mockup.html` when `UI: yes`; no `TODO` outside backticks; every `## E<n>` block has `covers`, `check`, `pass when`, `fail when`. | `:10-39` (kind and deliverable: `:16-23`) |
-| `--ready` | Also: Status is `ready`. | `:17` |
-| `--passed` | Also: `evals.md` matches line 1 of `.evals.sha256` (a missing fingerprint fails) and `RD.md`, its Status line aside, matches line 2 when there is one; a `**Review:**` line in `results.md`, when there is one, says `clean` or `findings-fixed`; every eval id has exactly one row in `results.md`, whose result cell is `pass` and whose evidence cell names a non-empty file under `evidence/`; every deliverable is a non-empty file in this checkout (the worker's own worktree for a ticket). | `:41-90` |
+| `check-evals <dir>` | `RD.md` and `evals.md` exist; valid Status and Risk; `**Kind:**` is one of the seven kinds in `templates/kinds.md` (missing = `code`); a non-code kind names a `**Deliverable:**`, each a repo-relative path with no `..`, not absolute, not under `specs/`, `.git/`, `.super-agents/` or `.job/` in any letter case, and not git-ignored; at least one `FR-`/`NFR-` line; every requirement named in some eval's `covers:`; `mockup.html` when `UI: yes`; no `TODO` outside backticks; every `## E<n>` block has `covers`, `check`, `pass when`, `fail when`. | `:10-39` (kind and deliverable: from the `kinds=` line to the end of the `delivs` block) |
+| `--ready` | Also: Status is `ready`. | the `--ready` line after the deliverable block |
+| `--passed` | Also: `evals.md` matches line 1 of `.evals.sha256` (a missing fingerprint fails) and `RD.md`, its Status line aside, matches line 2 when there is one; a `**Review:**` line in `results.md`, when there is one, says `clean` or `findings-fixed`; every eval id has exactly one row in `results.md`, whose result cell is `pass` and whose evidence cell names a non-empty file under `evidence/`; every deliverable is a non-empty regular file (not a directory or a symlink) in this checkout (the worker's own worktree for a ticket). | the `if [ "$passed" = 1 ]` block |
 
 For a worktree under `.claude/worktrees/`, the fingerprint is always taken from the main checkout,
-never from the worker's copy (`:44-48`).
+never from the worker's copy (the `.claude/worktrees/*` case in that block).
 
 ### 4.2 Where it is enforced
 
@@ -325,8 +325,8 @@ never from the worker's copy (`:44-48`).
 | Stop hook: a loop session cannot end a turn while `--passed` fails | hook, releasable (section 2.4) | `scripts/eval-gate.sh` |
 | SubagentStop hook: a worker cannot finish while `--passed` fails | hook, releasable | `scripts/worker-gate.sh` |
 | Router acceptance: reads `results.md` from the worktree but `evals.md` and `RD.md` from the main checkout; requires a pass row with an existing evidence file per eval and `Review: clean` or `findings-fixed` | prompt, by an agent with no write tools | `agents/router.md:46` |
-| Merger: aborts a leftover `MERGE_HEAD` first; refuses a branch that changed anything under `specs/tickets` other than its own `results.md` and `evidence/`, or `review.md`, `CLAUDE.md`, `AGENTS.md`, `.gitignore`; pins the branch to a sha; merges without committing, then lint and build | prompt, git commands | `agents/merger.md:15-17` |
-| Checker: walks the merged feature in a browser on port 3000; a break counts only if reproduced twice | prompt; the only check by an agent that did not build the ticket, browser only | `agents/checker.md:11-13` |
+| Merger: aborts a leftover `MERGE_HEAD` first; refuses a branch that changed anything under `specs/tickets` other than its own `results.md` and `evidence/`, or `review.md`, `CLAUDE.md`, `AGENTS.md`, `.gitignore`; pins the branch to a sha; merges without committing, then the pre-merge checks from `review.md` (none configured for a non-code ticket is reported as "no checks configured", not as a pass) | prompt, git commands | `agents/merger.md:15-17` |
+| Checker: walks the merged feature in a browser on port 3000, or reads the merged deliverable cold when the ticket has no app; a break counts only if reproduced twice | prompt; the only check by an agent that did not build the ticket | `agents/checker.md:11-13` |
 | `drop-specs` refuses while a ticket is not `done` on the committed board | script, fails closed | `scripts/drop-specs.sh:16-21` |
 
 ### 4.3 Trust boundary
@@ -553,7 +553,7 @@ byte for byte.
 | To change | Edit | Also update |
 |---|---|---|
 | What counts as a well-formed spec or a pass | `scripts/check-evals.sh` | `tests/run.sh:84-143`; `templates/RD.md`, `templates/evals.md` if the format changes |
-| Adding a kind of work | `templates/kinds.md` (a new `## <kind>` section with the four bullets) and the `kinds=` list in `scripts/check-evals.sh` | `tests/run.sh:664-674` (the headings and the list must match; each section needs its four bullets); `README.md` "Kinds of work" |
+| Adding a kind of work | `templates/kinds.md` (a new `## <kind>` section with the four bullets) and the `kinds=` list in `scripts/check-evals.sh` | `tests/run.sh`, the section headed `# ---- work kinds` (the headings and the list must match; each section needs its four bullets); `README.md` "Kinds of work" |
 | When the Stop gate blocks or releases | `scripts/eval-gate.sh` | `tests/run.sh:145-176`; `skills/review-loop/SKILL.md` (state keys); `README.md:103` |
 | When a worker may finish | `scripts/worker-gate.sh`, `scripts/job-status.sh` | `tests/run.sh:178-206`; `agents/worker.md` |
 | Status words, the board format, the fingerprint | `core/src/board.rs` | `core/tests/board_*.rs`; `scripts/drop-specs.sh:19`; `agents/merger.md:14` (both grep the board) |
