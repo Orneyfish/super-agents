@@ -695,6 +695,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### N-11 Test gaps that would have caught issues in this register
 
+- **Status: partially fixed.** Added to `tests/run.sh`: prompt tool names against each `tools:` list (it caught `SendMessage` in `agents/teammate.md`, now on its list; whether the agent-teams harness would have supplied it anyway is not verified); frontmatter keys and values; the `.claude` copies compared with the plugin (a drift guard, since N-04 keeps them); the N-01 merger fixture; un-namespaced and near-miss `agent_type` names for both hooks; a fixture with a remote for `commit-tickets` and `drop-specs`, plus `launch-sets-worktree-base`; the released binary asked for its version in `release.yml` (N-09). Remains: model-run evals still cover 2 of 8 skills and no agent (they cost money and were not run or extended).
+
 - **Severity:** low to medium. **Effort:** S each. **Roadmap:** partly (its test lists cover C-01
   to C-11; the items below are additional).
 - **Evidence and proposed test, per gap:**
@@ -776,7 +778,7 @@ roadmap; unmarked items are additions to the named release.
 | N-08 | Models, effort, turn limits without a rule or ceiling | medium | S-M | partially fixed | not covered |
 | N-09 | Release not tied to the source of its binaries | low-medium | S | fixed | not covered |
 | N-10 | Portability: Windows status, platforms, ports, `readlink` | low | S | partially fixed | not covered |
-| N-11 | Test gaps (tool lists, frontmatter, remotes, released binary) | low-medium | S | new | partly |
+| N-11 | Test gaps (tool lists, frontmatter, remotes, released binary) | low-medium | S | partially fixed | partly |
 
 22 issues: 11 carried over (6 high, 4 medium, 1 low-medium) and 11 new (1 high, 7 medium,
 2 low-medium, 1 low).

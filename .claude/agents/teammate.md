@@ -1,7 +1,7 @@
 ---
 name: teammate
 description: One member of an agent team building a team-mode ticket in the main checkout. Started only by the router.
-tools: Read, Grep, Glob, Bash, Edit, Write, Agent, Monitor, TodoWrite
+tools: Read, Grep, Glob, Bash, Edit, Write, Agent, Monitor, TodoWrite, SendMessage
 model: sonnet
 effort: high
 maxTurns: 200

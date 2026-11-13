@@ -566,9 +566,30 @@ done
 for f in "$R"/agents/*.md; do
   sed -n '2,/^---$/p' "$f" | grep -q '^tools: ' && ! sed -n '2,/^---$/p' "$f" | grep -q '^disallowedTools:' && ok || bad "agent $(basename "$f" .md): needs a tools: allowlist and no disallowedTools"
 done
+fm() { sed -n '2,/^---$/p' "$R/agents/$1.md" | sed -n "s/^$2: *//p" | head -1; }   # a frontmatter value of agents/$1.md
+# N-11: a tool a prompt tells its agent to call must be on that agent's tools: list, or the call is refused at run time
+for f in "$R"/agents/*.md; do n=$(basename "$f" .md); tl=", $(fm "$n" tools | sed 's/([^)]*)//g'),"
+  for tool in SendMessage TaskStop Monitor AskUserQuestion Write Edit; do
+    if sed '1,/^---$/{/^---$/!d;}' "$f" | sed 1d | grep -q "\`$tool\`"; then [[ $tl == *", $tool,"* ]] && ok || bad "agent $n: its prompt names \`$tool\`, which is not in its tools: list"; fi
+  done
+done
+# N-11: frontmatter is free text to the harness: a typo in a key or a value (isolation: worktre) silently drops the setting
+for f in "$R"/agents/*.md; do n=$(basename "$f" .md); badfm=""
+  for k in $(sed -n '2,/^---$/p' "$f" | sed -n 's/^\([A-Za-z]*\):.*/\1/p'); do case $k in name|description|tools|model|effort|isolation|maxTurns|autoCompactWindow) ;; *) badfm+=" unknown key '$k'";; esac; done
+  [[ $(fm "$n" model) =~ ^(sonnet|opus|haiku|inherit|claude-[a-z0-9-]+)$ ]] || badfm+=" model '$(fm "$n" model)'"
+  [[ $(fm "$n" effort) =~ ^(|low|medium|high|xhigh|max)$ ]] || badfm+=" effort '$(fm "$n" effort)'"
+  [[ $(fm "$n" isolation) =~ ^(|worktree)$ ]] || badfm+=" isolation '$(fm "$n" isolation)'"
+  [[ $(fm "$n" maxTurns)$(fm "$n" autoCompactWindow) =~ ^[0-9]*$ ]] || badfm+=" maxTurns or autoCompactWindow is not a number"
+  [ -z "$badfm" ] && ok || bad "agent $n frontmatter:$badfm"
+done
+# N-11: no fixture had a remote. commit-tickets and drop-specs commit on the local branch and never push
+rr=$T/withremote; git init -q --bare $T/rem.git; git init -q -b main $rr; (cd $rr && git config user.email t@t && git config user.name t && echo x > f && git add . && git commit -qm base \
+  && git remote add origin $T/rem.git && git push -q -u origin main 2>/dev/null && git switch -q -c integration/x && mkdir -p specs/tickets/001-a && echo x > specs/tickets/001-a/RD.md \
+  && printf '# Board\n| # | Title | Status | Mode | Runs |\n|---|---|---|---|---|\n| 001 | A | done | solo | alongside |\n' > specs/tickets/BOARD.md)
+t commit-tickets-with-remote 0 bash -c "cd $rr && $X/commit-tickets.sh -y";  t drop-specs-with-remote 0 bash -c "cd $rr && $X/drop-specs.sh"
+[ "$(git -C $T/rem.git for-each-ref | wc -l | tr -d ' ')" = 1 ] && [ "$(git -C $T/rem.git rev-parse main)" = "$(git -C $rr rev-parse main)" ] && [ "$(git -C $rr log --format=%s -1)" = "super-agents: drop specs before merge" ] && ok || bad "commit-tickets or drop-specs changed the remote (or did not commit locally) in a repository with a remote"
 # N-08: in auto mode nothing else bounds an agent that loops (the router is the user's own session; the first-time-user is started by hand);
 # and README's table of model, effort and turn limit is what the frontmatter says
-fm() { sed -n '2,/^---$/p' "$R/agents/$1.md" | sed -n "s/^$2: *//p" | head -1; }
 for f in "$R"/agents/*.md; do n=$(basename "$f" .md)
   case $n in router|first-time-user) ;; *) [[ $(fm "$n" maxTurns) =~ ^[0-9]+$ ]] && ok || bad "agent $n: needs maxTurns";; esac
   e=$(fm "$n" effort); x=$(fm "$n" maxTurns)
