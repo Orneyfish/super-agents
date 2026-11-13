@@ -173,6 +173,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### C-08 Runtime status lives in tracked files that workers write in the main checkout
 
+- **Status: partially fixed.** First step only: `board set` replaces `RD.md` and `.evals.sha256` through a temp file and a rename (`core/src/board.rs` `write_atomic`), so a reader without a lock no longer sees an empty or half-written file. Probed before the fix: 1,796 torn reads of `RD.md` during 300 status changes; test `a_reader_never_sees_a_half_written_rd_md` (Unix only; the Windows rename path, with its retry and fallback to a plain write, is not verified). Remains: `BOARD.md` is still rewritten in place (an atomic replace needs a lock file separate from the board, which belongs with `state.lock`); `building` is still written to tracked files in the main checkout, so the merger keeps its `specs/tickets` special cases; no `state.json`, no `board migrate`.
+
 - **Severity:** medium. **Effort:** M. **Roadmap:** section (g); v0.5.0 step 1.
 - **Evidence:** `agents/worker.md:15` runs `board set NNN building`, which resolves to the main
   checkout (`core/src/main.rs:100-104`), against `worker.md:32` "never touch the main checkout".
@@ -774,7 +776,7 @@ roadmap; unmarked items are additions to the named release.
 | C-05 | Worktrees start from the remote default branch | high | S | fixed | v0.4.1 item 2 |
 | C-06 | Stop gate spends its blocks on waits | high | S | fixed | v0.4.1 item 3 |
 | C-07 | Team mode bypasses isolation and the gate | medium | M | skipped | v0.6.0 item 2 |
-| C-08 | Runtime status in tracked files in the main checkout | medium | M | open | v0.5.0 step 1 |
+| C-08 | Runtime status in tracked files in the main checkout | medium | M | partially fixed | v0.5.0 step 1 |
 | C-09 | Recovery contradictions; watchdog repeats; `MERGE_HEAD` | medium | S-M | partially fixed | v0.4.1 item 8; v0.5.0; v0.6.0 |
 | C-10 | Over-powered reviewer, builder, watchdog, checker | medium | S | partially fixed | v0.4.1 item 7; v0.5.0 step 6 |
 | C-11 | Three loops; shell parser; Python compatibility; `specs/*` | low-medium | M | partially fixed | v0.4.1 item 9; v0.6.0 |

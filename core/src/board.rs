@@ -284,7 +284,7 @@ pub fn set_status(root: &Path, target: &str, status: &str) -> Result<(), String>
         let nl = if text.contains("\r\n") { "\r\n" } else { "\n" };
         text.replacen(nl, &format!("{nl}{nl}{line}{nl}"), 1)
     };
-    fs::write(&rd, updated).map_err(|e| format!("{}: {e}", rd.display()))?;
+    write_atomic(&rd, &updated).map_err(|e| format!("{}: {e}", rd.display()))?;
 
     // The fingerprint of what the user approved; check-evals.sh --passed compares against it. It is written when a draft is
     // approved (or when there is none yet), not on every `ready`: setting an approved ticket `ready` again must not make
@@ -296,7 +296,7 @@ pub fn set_status(root: &Path, target: &str, status: &str) -> Result<(), String>
         let hex = fingerprint(&evals).map_err(|e| format!("{}: {e}", evals.display()))?;
         let rd_hex = fingerprint_rd(&rd).map_err(|e| format!("{}: {e}", rd.display()))?;
         // line 1 is all that older versions wrote and read; line 2 covers RD.md
-        fs::write(&fp, format!("{hex}\n{rd_hex}  RD.md\n"))
+        write_atomic(&fp, &format!("{hex}\n{rd_hex}  RD.md\n"))
             .map_err(|e| format!("{}: {e}", fp.display()))?;
     }
 
@@ -305,6 +305,24 @@ pub fn set_status(root: &Path, target: &str, status: &str) -> Result<(), String>
         set_board_row(&board, &number, status).map_err(|e| format!("{}: {e}", board.display()))?;
     }
     Ok(())
+}
+
+/// Replaces a file in one step, so a reader that takes no lock (the router's Read tool, check-evals, the scan) sees the
+/// old content or the new, never an empty or half-written file: a temp file in the same folder, renamed over the target.
+fn write_atomic(path: &Path, content: &str) -> io::Result<()> {
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(format!(".tmp{}", std::process::id()));
+    let tmp = PathBuf::from(tmp);
+    fs::write(&tmp, content)?;
+    for _ in 0..3 {
+        if fs::rename(&tmp, path).is_ok() {
+            return Ok(());
+        }
+        // Windows: the rename fails while another program holds the target open
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let _ = fs::remove_file(&tmp);
+    fs::write(path, content) // what this did before: not atomic, but the change is not lost
 }
 
 /// `NNN` when `dir` is a `specs/tickets/NNN-*` folder.

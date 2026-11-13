@@ -182,3 +182,41 @@ fn concurrent_sets_do_not_lose_rows() {
     let b = read(&root.join("specs/tickets/BOARD.md"));
     assert_eq!(b.matches("| building |").count(), 3, "{b}");
 }
+
+// C-08: the router, check-evals and the scan read RD.md without a lock, while workers flip its status.
+#[cfg(unix)]
+#[test]
+fn a_reader_never_sees_a_half_written_rd_md() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    let t = fixture();
+    let root = t.path().to_path_buf();
+    let rd = root.join("specs/tickets/001-found/RD.md");
+    let stop = Arc::new(AtomicBool::new(false));
+    let reader = {
+        let (rd, stop) = (rd.clone(), stop.clone());
+        std::thread::spawn(move || {
+            let mut torn = 0;
+            while !stop.load(Ordering::Relaxed) {
+                match fs::read_to_string(&rd) {
+                    Ok(text) if text.contains("**Status:**") && text.ends_with("UI: no\n") => {}
+                    _ => torn += 1,
+                }
+            }
+            torn
+        })
+    };
+    for i in 0..300 {
+        let status = if i % 2 == 0 { "building" } else { "ready" };
+        assert_eq!(
+            sa(&root, &["board", "set", "001", status, s(&root)]).code,
+            0
+        );
+    }
+    stop.store(true, Ordering::Relaxed);
+    assert_eq!(
+        reader.join().unwrap(),
+        0,
+        "reads that saw an empty or partial RD.md"
+    );
+}
