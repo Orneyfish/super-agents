@@ -611,6 +611,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### N-09 A release is not tied to the source its binaries were built from
 
+- **Status: fixed.** `release.yml` `publish` fetches full history and refuses to publish when `core/` at the tag differs from the draft's `targetCommitish`; it also asks the released Linux binary for its version; the `test` job runs `cargo test --locked`; `ci.yml` pins the same `RUST_TOOLCHAIN` as `build-core.yml`; `build-core.yml` moves an existing draft's target to the commit it builds from (without that a re-run from another ref would leave a stale target). Static guards in `tests/run.sh`. Doc correction: the diff does not exclude `core/Cargo.lock` as written below, because a changed lock file changes the dependencies that are built in. Not verified: no workflow was run (no throwaway tag in a fork).
+
 - **Severity:** low to medium. **Effort:** S. **Roadmap:** not covered (the review calls the
   supply chain sound, `design-review.md:30`; that holds for binary-to-checksum, not source-to-binary).
 - **Evidence:** `build-core.yml` builds from whatever ref is dispatched and records it as the draft
@@ -772,7 +774,7 @@ roadmap; unmarked items are additions to the named release.
 | N-06 | Router single point of failure; state in context only | medium | M | new, read | partly (g), (e) |
 | N-07 | Checker races the next merge; reproducers share a port | medium | S | fixed | not covered |
 | N-08 | Models, effort, turn limits without a rule or ceiling | medium | S-M | partially fixed | not covered |
-| N-09 | Release not tied to the source of its binaries | low-medium | S | new, read | not covered |
+| N-09 | Release not tied to the source of its binaries | low-medium | S | fixed | not covered |
 | N-10 | Portability: Windows status, platforms, ports, `readlink` | low | S | partially fixed | not covered |
 | N-11 | Test gaps (tool lists, frontmatter, remotes, released binary) | low-medium | S | new | partly |
 

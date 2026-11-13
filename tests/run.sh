@@ -626,6 +626,14 @@ bc="$R/.github/workflows/build-core.yml"
 [ "$(awk '/^permissions:/{p=1;next} p&&/contents:/{print $2; exit}' "$bc")" = read ] && ok || bad "build-core.yml: the workflow-level token must be contents: read"
 [ "$(grep -c 'persist-credentials: false' "$bc")" = "$(grep -c 'actions/checkout@' "$bc")" ] && ok || bad "build-core.yml: every checkout needs persist-credentials: false"
 grep -q 'isDraft' "$bc" && ok || bad "build-core.yml: must refuse a release that is already published (isDraft)"
+# N-09: a release is tied to the sa-core sources its binaries were built from, the released binary is the one asked for its version,
+# the release runs the Rust tests, and CI lints with the toolchain the release builds with
+rl="$R/.github/workflows/release.yml"; tc() { sed -n 's/^  RUST_TOOLCHAIN: *"\(.*\)".*/\1/p' "$1" | head -1; }
+grep -q 'targetCommitish' "$rl" && grep -q 'fetch-depth: 0' "$rl" && grep -q 'git diff --quiet "$built" "$GITHUB_SHA" -- core/' "$rl" && ok || bad "release.yml: publish must compare core/ at the tag with the commit the binaries were built from (targetCommitish)"
+grep -q 'release edit "v$VERSION" --target "$GITHUB_SHA"' "$bc" && ok || bad "build-core.yml: a re-run must move the draft's target to the commit it builds from"
+grep -q 'sa-core-x86_64-unknown-linux-musl --version' "$rl" && ok || bad "release.yml: publish must ask the released Linux binary for its version"
+grep -q 'cargo test --locked' "$rl" && ok || bad "release.yml: the test job must run cargo test --locked"
+[ -n "$(tc "$bc")" ] && [ "$(tc "$R/.github/workflows/ci.yml")" = "$(tc "$bc")" ] && ok || bad "ci.yml and build-core.yml must pin the same RUST_TOOLCHAIN"
 for c in "$R"/evals/*/; do n=$(basename "$c"); [ "$n" = results ] && continue   # a case without a grader fails to load in 'claude plugin eval'
   [ -f "$c/prompt.md" ] && [ -n "$(ls "$c"/graders/*.md 2>/dev/null)" ] && ok || bad "eval case $n needs prompt.md and at least one graders/*.md"
 done

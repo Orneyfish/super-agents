@@ -7,6 +7,9 @@ on:
 permissions:
   contents: read
 
+env:
+  RUST_TOOLCHAIN: "1.99.1"   # the same as build-core.yml, so fmt and clippy cannot start failing on a toolchain bump nobody chose
+
 jobs:
   test:
     strategy:
@@ -23,10 +26,10 @@ jobs:
       - name: Rust checks
         working-directory: core
         run: |
-          rustup component add rustfmt clippy
-          cargo fmt --check
-          cargo clippy --locked --all-targets -- -D warnings
-          cargo test --locked
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component rustfmt,clippy
+          cargo "+$RUST_TOOLCHAIN" fmt --check
+          cargo "+$RUST_TOOLCHAIN" clippy --locked --all-targets -- -D warnings
+          cargo "+$RUST_TOOLCHAIN" test --locked
       - name: Tests
         run: bash tests/run.sh
 
