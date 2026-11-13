@@ -2,7 +2,7 @@
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "super-agents",
   "version": "0.3.1",
-  "description": "Verify-before-done workflow: evals, fresh-context build/verify/review loop, risk-scaled strictness, first-time-user testing, bug fixing via git.",
+  "description": "Verify-before-done workflow for any kind of work (code, documents, research, analysis, design, plans, operations): evals, fresh-context build/verify/review loop, risk-scaled strictness, first-time-user testing, bug fixing via git.",
   "author": {
     "name": "orneyfish"
   },
@@ -15,6 +15,10 @@
     "review",
     "router",
     "workers",
-    "git-worktree"
+    "git-worktree",
+    "documents",
+    "research",
+    "analysis",
+    "design"
   ]
 }

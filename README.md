@@ -5,6 +5,10 @@ A Claude Code plugin that makes agents prove their work before calling it done, 
 - **Verify before done** (the Claude Code team's review process): strict evals written first, build / test / review in separate fresh-context agents, strictness scaled to risk, loops that stop when they are not converging, a fast way back through git.
 - **One agent to talk to** (DeepSeek's "super agent"): a router that only talks to you and hands tickets to workers, with a watchdog that notices stuck workers, a merger, a post-merge checker and a bug reproducer.
 
+super-agents is for any kind of work, not only code: documents, research, analysis, design, plans and operations are checked the same way, each against what "done" means for its kind (see [Kinds of work](#kinds-of-work)).
+
+Ideas for the interview rounds, the shared glossary and ticket slicing are adapted from `mattpocock/skills` (MIT).
+
 ## Install
 
 Needs `bash`, `git` and `curl`.
@@ -61,13 +65,27 @@ What degrades outside Claude Code: the hooks that stop an agent from saying "don
 
 **Keeping specs out of your PRs:** `setup` git-ignores the plugin's own files in `specs/<name>/` (`RD.md`, `evals.md`, `.evals.sha256`, `results.md`, `mockup.html`, `evidence/`), so single-feature specs are never committed; anything else under `specs/` is the project's and is not ignored. `specs/tickets/` must be committed while tickets run, so the router removes it for you: once the last ticket is `done` and the checker confirms it, the merger commits the removal of `specs/tickets/` on the integration branch (`super-agents drop-specs`; the files stay in the branch's history). You run nothing, and any other file under `specs/` is left alone. Tickets you add afterwards start a fresh board. Run `super-agents drop-specs` by hand only to retry, for example if the router session ended before it ran.
 
+## Kinds of work
+
+Each piece of work has a kind, set in `RD.md` as `**Kind:**` (missing means `code`). "Done" is checked for that kind:
+
+- **code**: it behaves as the requirements say in the running app, at the sizes and states the spec names.
+- **document**: every required part is present, every factual claim is supported, and a reader can act on it.
+- **research**: the question is answered, each claim traces to a primary source, and what is unknown is stated.
+- **analysis**: the numbers reproduce from the raw data and answer the question asked.
+- **design**: every required state and size is shown, and a newcomer can complete the listed tasks on it.
+- **plan**: someone could start step 1 without asking anything, and every goal is measurable.
+- **operations**: the procedure ran on a safe target and the end state was read back; the real target is not touched.
+
+A non-code kind also names its `**Deliverable:**` file. `check-evals --passed` fails unless each deliverable exists in the checkout and is non-empty. The checks each kind uses are in [`templates/kinds.md`](templates/kinds.md).
+
 ## Commands
 
 | Command | What it does |
 |---|---|
 | `/super-agents:setup-project [path ...]` | Once per project: `review.md`, a super-agents block in `CLAUDE.md` (imports `review.md`, sets the git branch policy), git-ignores run state. Re-running refreshes the block. Takes several paths. |
 | `/super-agents:classify-risk <feature>` | "What happens to a customer if this breaks?" gives low / medium / high. |
-| `/super-agents:write-eval <feature>` | `specs/<feature>/RD.md` + `evals.md` (+ `mockup.html` for UI), validated, then stops for your review. |
+| `/super-agents:write-eval <feature>` | `specs/<feature>/RD.md` + `evals.md` (+ `mockup.html` for UI), validated, then stops for your review. Works for any kind of work (see Kinds of work). |
 | `/super-agents:write-tickets <request>` | Splits a request into tickets, interviews you one question at a time until nothing is left to guess, writes `specs/tickets/NNN-slug/{RD.md,evals.md}` and `BOARD.md`. |
 | `/super-agents:mark-ready <NNN ...\|all\|dir>` | Your approval step: validates, then marks `draft` → `ready`. |
 | `/super-agents:review-loop <feature\|NNN>` | Builder, tester, reviewer in rounds until every eval passes and review is clean. Max 5 rounds. |
@@ -113,7 +131,7 @@ The turn limits are ceilings for an agent that loops, set well above anything se
 ```
 specs/tickets/BOARD.md                 # | # | Title | Status | Mode | Runs |
 specs/tickets/001-slug/
-  RD.md        # **Status:** draft|ready|building|done, **Risk:**, FR-/NFR- requirements, Touches, Must not touch, Decisions, Out of scope
+  RD.md        # **Status:** draft|ready|building|done, **Risk:**, **Kind:** (missing = code), **Deliverable:** (paths; required for non-code kinds), FR-/NFR- requirements, Touches, Must not touch, Decisions, Out of scope
   evals.md     # Setup, E1..En (check / pass when / fail when / covers), Definition of done. Approved by you; not edited while building
   .evals.sha256  # fingerprints of evals.md (line 1) and of RD.md without its Status line (line 2), written when you approve it (mark-ready; CRLF counts as LF, so Git's line-ending conversion on Windows does not matter); the done-gate fails if either file changes afterwards
   mockup.html  # UI tickets only

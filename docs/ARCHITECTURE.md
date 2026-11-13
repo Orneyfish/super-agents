@@ -254,6 +254,7 @@ are not reachable through the dispatcher; only `hooks/hooks.json` runs them.
 | File | Used by |
 |---|---|
 | `templates/RD.md` | write-eval step 1, via `super-agents template RD.md`. |
+| `templates/kinds.md` | write-eval (`super-agents template kinds.md`); the reviewer (`agents/reviewer.md`) and the checker (`agents/checker.md`) read it for the ticket's kind. Its seven `## <kind>` headings must equal the `kinds=` list in `scripts/check-evals.sh`. |
 | `templates/evals.md` | write-eval step 3. |
 | `templates/review.md` | `init-project.sh:11` copies it to the project root; read by reviewer, tester, merger, checker for failure rules, ports and the lint, build and test commands. |
 | `templates/claude-block.md` | `init-project.sh:15-28` inserts or refreshes it between the `SUPER_AGENTS_START` and `SUPER_AGENTS_END` markers. It `@`-imports `review.md` (`:4`). |
@@ -308,9 +309,9 @@ One validator, `scripts/check-evals.sh`, in three strengths:
 
 | Call | Checks | Lines |
 |---|---|---|
-| `check-evals <dir>` | `RD.md` and `evals.md` exist; valid Status and Risk; at least one `FR-`/`NFR-` line; every requirement named in some eval's `covers:`; `mockup.html` when `UI: yes`; no `TODO` outside backticks; every `## E<n>` block has `covers`, `check`, `pass when`, `fail when`. | `:10-39` |
+| `check-evals <dir>` | `RD.md` and `evals.md` exist; valid Status and Risk; `**Kind:**` is one of the seven kinds in `templates/kinds.md` (missing = `code`); a non-code kind names a `**Deliverable:**`, each a repo-relative path with no `..`, not absolute and not under `specs/`; at least one `FR-`/`NFR-` line; every requirement named in some eval's `covers:`; `mockup.html` when `UI: yes`; no `TODO` outside backticks; every `## E<n>` block has `covers`, `check`, `pass when`, `fail when`. | `:10-39` (kind and deliverable: `:16-23`) |
 | `--ready` | Also: Status is `ready`. | `:17` |
-| `--passed` | Also: `evals.md` matches line 1 of `.evals.sha256` (a missing fingerprint fails) and `RD.md`, its Status line aside, matches line 2 when there is one; a `**Review:**` line in `results.md`, when there is one, says `clean` or `findings-fixed`; every eval id has exactly one row in `results.md`, whose result cell is `pass` and whose evidence cell names a non-empty file under `evidence/`. | `:41-75` |
+| `--passed` | Also: `evals.md` matches line 1 of `.evals.sha256` (a missing fingerprint fails) and `RD.md`, its Status line aside, matches line 2 when there is one; a `**Review:**` line in `results.md`, when there is one, says `clean` or `findings-fixed`; every eval id has exactly one row in `results.md`, whose result cell is `pass` and whose evidence cell names a non-empty file under `evidence/`; every deliverable is a non-empty file in this checkout (the worker's own worktree for a ticket). | `:41-90` |
 
 For a worktree under `.claude/worktrees/`, the fingerprint is always taken from the main checkout,
 never from the worker's copy (`:44-48`).
@@ -552,6 +553,7 @@ byte for byte.
 | To change | Edit | Also update |
 |---|---|---|
 | What counts as a well-formed spec or a pass | `scripts/check-evals.sh` | `tests/run.sh:84-143`; `templates/RD.md`, `templates/evals.md` if the format changes |
+| Adding a kind of work | `templates/kinds.md` (a new `## <kind>` section with the four bullets) and the `kinds=` list in `scripts/check-evals.sh` | `tests/run.sh:664-674` (the headings and the list must match; each section needs its four bullets); `README.md` "Kinds of work" |
 | When the Stop gate blocks or releases | `scripts/eval-gate.sh` | `tests/run.sh:145-176`; `skills/review-loop/SKILL.md` (state keys); `README.md:103` |
 | When a worker may finish | `scripts/worker-gate.sh`, `scripts/job-status.sh` | `tests/run.sh:178-206`; `agents/worker.md` |
 | Status words, the board format, the fingerprint | `core/src/board.rs` | `core/tests/board_*.rs`; `scripts/drop-specs.sh:19`; `agents/merger.md:14` (both grep the board) |
