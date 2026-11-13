@@ -150,6 +150,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### C-07 Team mode bypasses isolation, the gate and the merge path
 
+- **Status: skipped.** Conflicts with a user decision: the user just enabled agent teams, so team mode is not cut. Its gaps (teammates are not gated, work is uncommitted in the main checkout, a building team ticket holds every merge) remain as documented.
+
 - **Severity:** medium. **Effort:** M. **Roadmap:** section (f); v0.6.0 item 2; open decision 1.
 - **Evidence:** teammates work uncommitted in the main checkout (`agents/teammate.md:9,14`) and are
   not gated (`README.md:104`; `worker-gate.sh:8` matches workers only). One building team ticket
@@ -327,7 +329,7 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### N-03 The worker gate matches one exact agent name
 
-- **Status: contested, not fixed.** `tests/run.sh` (the `#7` comment above `wgate-bare-worker`) deliberately asserts that a bare `worker` is NOT gated. The regex fix below would break that test; decide first, or fix N-04 instead.
+- **Status: skipped.** Conflicts with a user decision: `tests/run.sh` (the `#7` comment above `wgate-bare-worker`) deliberately asserts that a bare `worker` and another plugin's `worker` are NOT gated, and the `.claude/agents` copies stay (N-04). The tension is real: a worker started from the project copy as `worker` is not gated. Near-miss names are now tested (`wgate-coworker`, `wgate-teammate`; N-11).
 
 - **Severity:** medium. **Effort:** S. **Roadmap:** not covered (the roadmap keeps the
   `super-agents:worker` literal).
@@ -351,6 +353,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 - **Verify:** `bash tests/run.sh`; rerun the probe and expect a block for both names.
 
 ### N-04 `.claude/agents` and `.claude/skills` duplicate the plugin and shadow its names
+
+- **Status: skipped.** Conflicts with a user decision: the user asked for the `.claude/agents` and `.claude/skills` copies. Drift, the one part that can be closed without deleting them, is now guarded: `tests/run.sh` fails when a copy differs from its plugin file (the `model:` lines of `router.md` and `watchdog.md` excepted). Shadowing (each agent offered twice) remains.
 
 - **Severity:** medium. **Effort:** S. **Roadmap:** not covered (added after it, commit `aab1bdc`).
 - **Evidence:** `diff -r agents .claude/agents` reports only `general-purpose.md` as extra;
@@ -741,15 +745,15 @@ roadmap; unmarked items are additions to the named release.
 | C-04 | Gates fail open; trust agent-written `dir`; launcher | high | S-M | open | v0.4.1 items 4-6; v0.5.0 step 5 |
 | C-05 | Worktrees start from the remote default branch | high | S | fixed | v0.4.1 item 2 |
 | C-06 | Stop gate spends its blocks on waits | high | S | fixed | v0.4.1 item 3 |
-| C-07 | Team mode bypasses isolation and the gate | medium | M | open | v0.6.0 item 2 |
+| C-07 | Team mode bypasses isolation and the gate | medium | M | skipped | v0.6.0 item 2 |
 | C-08 | Runtime status in tracked files in the main checkout | medium | M | open | v0.5.0 step 1 |
 | C-09 | Recovery contradictions; watchdog repeats; `MERGE_HEAD` | medium | S-M | open | v0.4.1 item 8; v0.5.0; v0.6.0 |
 | C-10 | Over-powered reviewer, builder, watchdog, checker | medium | S | open | v0.4.1 item 7; v0.5.0 step 6 |
 | C-11 | Three loops; shell parser; Python compatibility; `specs/*` | low-medium | M | open | v0.4.1 item 9; v0.6.0 |
 | N-01 | Branch may change other tickets' evals and `review.md` | high | S | new, probed | not covered |
 | N-02 | `RD.md` approved but not fingerprinted | medium | S-M | new, probed | not covered |
-| N-03 | Worker gate matches one exact agent name | medium | S | new, probed | not covered |
-| N-04 | `.claude` copies duplicate and shadow the plugin | medium | S | new, observed | not covered |
+| N-03 | Worker gate matches one exact agent name | medium | S | skipped | not covered |
+| N-04 | `.claude` copies duplicate and shadow the plugin | medium | S | skipped | not covered |
 | N-05 | Worker that asks the user is blocked; no `SendMessage` | medium | S | new, probed | partly (b) |
 | N-06 | Router single point of failure; state in context only | medium | M | new, read | partly (g), (e) |
 | N-07 | Checker races the next merge; reproducers share a port | medium | S | new, read | not covered |

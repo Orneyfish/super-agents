@@ -207,6 +207,7 @@ printf 'x[$(touch %s/ARITH2)]\n' "$T" > .job/gate_blocks; wg super-agents:worker
 t job-name-grammar 2 $X/job-status.sh --name ../x init 001 "$T/repo/$D" building
 # #7: only this plugin's worker is gated; another plugin's (or a bare) 'worker' gets neither a block nor a notice
 wg other-plugin:worker; silent wgate-other-plugin-worker; wg worker; silent wgate-bare-worker
+wg coworker; silent wgate-coworker; wg super-agents:teammate; silent wgate-teammate   # N-11: near-miss names
 $X/job-status.sh blocked why; wg super-agents:worker; silent wgate-blocked-phase
 $X/job-status.sh building; echo 3 > .job/gate_blocks; wg super-agents:worker; has wgate-cap "released after 3 blocks"
 # M2: going back to building (a fix round) starts a fresh block count
@@ -366,6 +367,9 @@ ftu "" "cat src/app.py"; silent hook-main-agent-free
 ftu super-agents:builder "grep -r x ."; silent hook-other-agent-free
 ftu super-agents:first-time-user "cat src/app.py"; has hook-ftu-cat-denied '"permissionDecision": "deny"'
 ftu super-agents:first-time-user "curl -s http://localhost:3000/"; silent hook-ftu-curl-allowed
+# N-11: the hook matches the agent name with or without a plugin prefix, and nothing that merely ends in it
+ftu first-time-user "cat src/app.py"; has hook-ftu-bare-name-denied '"permissionDecision": "deny"'
+ftu super-agents:not-first-time-user "cat src/app.py"; silent hook-ftu-near-miss-free
 # a verb only counts where a command starts: words inside arguments are the user's own data, not a peek at the code
 for c in 'curl -s -d "q=find a flight" http://localhost:3000/search' 'curl -s http://localhost:3000/ls' './launcher.sh add "cat food"' 'bash ./launcher.sh list'; do
   ftu super-agents:first-time-user "$c"; silent "hook-ftu-allowed: $c"
@@ -501,6 +505,11 @@ mc=$(grep -o 'git diff --name-only HEAD\.\.\.\$SHA -- specs/tickets[^`]*' "$R/ag
 [ -z "$(cd $m && export SHA=ok && eval "$mc")" ] && ok || bad "N-01: the approved-file check rejects a branch that only adds results.md and evidence"
 [ "$(cd $m && export SHA=bad && eval "$mc" | sort | tr '\n' ' ')" = "review.md specs/tickets/002-b/evals.md " ] && ok || bad "N-01: the approved-file check misses another ticket's evals.md or review.md"
 
+# N-04 (the copies are kept on purpose): .claude/agents and .claude/skills must not drift from the plugin; only the model lines of router and watchdog differ
+for f in "$R"/agents/*.md; do n=$(basename "$f"); c="$R/.claude/agents/$n"
+  case $n in router.md|watchdog.md) diff <(grep -v '^model:' "$f") <(grep -v '^model:' "$c") >/dev/null;; *) cmp -s "$f" "$c";; esac && ok || bad ".claude/agents/$n differs from agents/$n: edit both"
+done
+diff -r "$R/skills" "$R/.claude/skills" >/dev/null && ok || bad ".claude/skills differs from skills/: edit both"
 # M1: the plugin's bin/ is on the agents' PATH, scripts/ is not: prompts must say 'super-agents job-status' / 'super-agents board', never the bare script
 for f in "$R"/agents/*.md "$R"/skills/*/SKILL.md; do
   grep -qE 'job-status\.sh|board\.py' "$f" && bad "$f names job-status.sh or board.py directly; use 'super-agents job-status' / 'super-agents board'" || ok
