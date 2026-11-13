@@ -176,6 +176,13 @@ gs A; has gate-recorded-owner-gated '"decision": "block"'
 # C-01: gate_blocks is text an agent or a repository wrote: it is never run as shell arithmetic, and garbage counts as 0 (the gate still blocks)
 printf -- '---\ndir: %s\nactive: true\nawaiting_user: false\ngate_blocks: x[$(touch %s/ARITH)]\n---\n' "$D" "$T" > $st
 gate 2>/dev/null; has gate-arith-injection '"decision": "block"'; [ ! -e $T/ARITH ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL gate-arith-injection: the gate ran a command from state.md"; }
+# C-06: a stop while a subagent still runs is a wait, not "done": allowed, and it does not spend one of the three blocks
+gb() { LAST=$(echo "{\"cwd\":\"$T/repo\",\"background_tasks\":$1}" | $X/eval-gate.sh); }
+state; gb '[{"id":"a1","type":"agent","status":"running"}]'; silent gate-allows-while-subagent-runs; grep -q 'gate_blocks: 0' $st && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL gate-allows-while-subagent-runs: a wait counted as a block"; }
+gb '[{"id":"a1"}]'; silent gate-allows-task-without-status
+gb '[]'; has gate-blocks-when-no-task-runs '"decision": "block"'
+state; gb '[{"id":"a1","status":"completed"}]'; has gate-blocks-when-tasks-finished '"decision": "block"'
+grep -q 'run_in_background: false' "$R/skills/review-loop/SKILL.md" && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL the review-loop no longer asks for foreground subagents (C-06)"; }
 # C-01: a state file the repository ships (git-tracked) or a symlink is not a loop the user started: no gate, and a fixed notice
 state; git add -f $st; gate; has gate-tracked-state-ignored "tracked by git or a symlink"; hasnt gate-tracked-state-ignored '"decision": "block"'; git rm -q --cached $st
 state; mv $st $T/state.real; ln -s $T/state.real $st 2>/dev/null

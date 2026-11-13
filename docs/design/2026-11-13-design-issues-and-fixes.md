@@ -135,6 +135,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### C-06 The Stop gate spends its three blocks while subagents are still running
 
+- **Status: fixed.** `scripts/eval-gate.sh` allows a stop silently, without counting a block, while the payload's `background_tasks` lists a task that is running (or has no status); `skills/review-loop/SKILL.md` asks for foreground subagents. Tests: `gate-allows-while-subagent-runs`, `gate-blocks-when-no-task-runs`. Not verified: the entries' real shape (the evidence recorded only the key and a count), so the test payloads are an assumption.
+
 - **Severity:** high. **Effort:** S. **Roadmap:** section (b) "Seen live"; v0.4.1 item 3.
 - **Evidence:** `scripts/eval-gate.sh:21-30` has no notion of a running subagent.
   `docs/design/evidence/live/run5-review-loop/timeline.txt`: three blocks in the first 12 seconds,
@@ -738,7 +740,7 @@ roadmap; unmarked items are additions to the named release.
 | C-03 | Evidence not bound to code; self-certified results; first row wins | high | L | open | v0.5.0 steps 4, 7 |
 | C-04 | Gates fail open; trust agent-written `dir`; launcher | high | S-M | open | v0.4.1 items 4-6; v0.5.0 step 5 |
 | C-05 | Worktrees start from the remote default branch | high | S | fixed | v0.4.1 item 2 |
-| C-06 | Stop gate spends its blocks on waits | high | S | open | v0.4.1 item 3 |
+| C-06 | Stop gate spends its blocks on waits | high | S | fixed | v0.4.1 item 3 |
 | C-07 | Team mode bypasses isolation and the gate | medium | M | open | v0.6.0 item 2 |
 | C-08 | Runtime status in tracked files in the main checkout | medium | M | open | v0.5.0 step 1 |
 | C-09 | Recovery contradictions; watchdog repeats; `MERGE_HEAD` | medium | S-M | open | v0.4.1 item 8; v0.5.0; v0.6.0 |

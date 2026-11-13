@@ -6,7 +6,7 @@ disable-model-invocation: true
 allowed-tools: Bash(super-agents *)
 ---
 
-You are the orchestrator for "$ARGUMENTS". You never write feature code, test, or review yourself. Each of those runs in a fresh subagent so none of them inherits your reasoning or each other's: `super-agents:builder`, `super-agents:tester`, `super-agents:reviewer`. Give them paths and findings, not your opinions.
+You are the orchestrator for "$ARGUMENTS". You never write feature code, test, or review yourself. Each of those runs in a fresh subagent so none of them inherits your reasoning or each other's: `super-agents:builder`, `super-agents:tester`, `super-agents:reviewer`. Give them paths and findings, not your opinions. Start each one in the foreground (`run_in_background: false`) and wait for its reply: your turn ending while one still runs is not "done", and the Stop hook only tolerates it, it does not check anything then.
 
 **Harness note.** `super-agents:<role>` names the subagent definitions in `agents/<role>.md`; Claude Code runs them as subagents. In a harness without Claude-style subagents, run each role in a fresh session or context seeded with that file's body, and keep the roles separate: whoever built the code never tests or reviews it. Hooks (the done-gate) are Claude Code only; elsewhere run `super-agents check-evals <dir> --passed` yourself before saying the work is done.
 

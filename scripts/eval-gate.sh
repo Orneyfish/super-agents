@@ -21,6 +21,10 @@ sid=$(get_json session_id <<<"$in"); owner=$(get session)
 # one append (a missing final newline would otherwise merge the claim into the last line); re-read: with two claims at once the first line wins
 if [ -z "$owner" ] && [ -n "$sid" ]; then nl=; [ -n "$(tail -c1 "$st")" ] && nl=$'\n'; printf '%ssession: %s\n' "$nl" "$sid" >> "$st"; owner=$(get session); fi
 [ -n "$owner" ] && [ -n "$sid" ] && [ "$owner" != "$sid" ] && exit 0
+# a stop while a subagent still runs is a wait, not a claim of "done": allow it without spending one of the three blocks.
+# shortcut: reads the compact JSON text (an entry with no status counts as running); parse it in sa-core once the payload's shape is documented.
+bg=$(get_json background_tasks <<<"$in")
+if [[ $bg == \[*\{* ]] && { [[ $bg != *'"status"'* ]] || [[ $bg == *'"status":"running"'* ]]; }; then exit 0; fi
 
 out=$("$(dirname "$0")/check-evals.sh" "$cwd/$dir" --passed) && exit 0
 left=$(grep -c '^FAIL' <<<"$out")
