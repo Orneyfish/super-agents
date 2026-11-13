@@ -1,0 +1,4 @@
+HELLO, ADA!$
+exit=0
+HELLO, GRACE HOPPER!$
+0

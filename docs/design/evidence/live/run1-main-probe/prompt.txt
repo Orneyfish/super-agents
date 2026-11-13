@@ -1,0 +1,8 @@
+You are running a harness probe. Do every step in order with the named tool, never skip a step even if an earlier one failed, and do not do anything else.
+1. Write tool: create main-note.txt in the current directory with the content m1
+2. Edit tool: in main-note.txt replace m1 with m2
+3. Write tool: create protected.txt in the current directory with the content main
+4. Read nb.ipynb, then use the NotebookEdit tool to replace the source of its first cell with print(2)
+5. Agent tool: subagent_type super-agents:probe-worker, prompt: go. Run it in the foreground (not in the background) and wait for its result.
+6. Agent tool: subagent_type super-agents:probe-merger, prompt: go. Run it in the foreground and wait for its result.
+7. Final reply: "WORKER:" then the probe-worker reply verbatim, then "MERGER:" then the probe-merger reply verbatim, then "MAIN:" and one line per step 1-4 saying whether the tool succeeded or the exact error.

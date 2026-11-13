@@ -1,0 +1,164 @@
+===== MAIN
+super-agents check-evals specs/greet --ready; git branch --show-current; git status --short; ls specs/greet 2>&1; grep -i '\*\*Risk' specs/greet/RD.md
+
+===== MAIN
+git switch -c feat/greet && super-agents board set specs/greet building; mkdir -p .super-agents && H=$(git rev-parse HEAD) && cat > .super-agents/state.md <<EOF
+---
+dir: specs/greet
+session: c779c44b-a044-4ccb-bd4a-a30931a8fdc1
+active: true
+awaiting_user: false
+risk: low
+round: 1
+max_rounds: 5
+gate_blocks: 0
+base: $H
+checkpoint: $H
+---
+| id | class | severity | location | first | last | status |
+|----|-------|----------|----------|-------|------|--------|
+EOF
+cat specs/greet/RD.md specs/greet/evals.md; cat .gitignore
+
+===== builder
+cd /tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/work/demo; cat specs/greet/RD.md specs/greet/evals.md; ls; cat greeter.py; ls tests* 2>/dev/null
+
+===== builder
+cd /tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/work/demo; cat test_greeter.py; sed -n 1,30p specs/greet/evals.md | cut -c1-600
+
+===== MAIN
+git status --short && git diff --stat
+
+===== builder
+cd /tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/work/demo; python3 - <<'E'
+p='greeter.py'
+s=open(p).read()
+s=s.replace('''    print("usage: greeter.py hello"''','''    if len(argv) >= 1 and argv[0] == "greet":
+        return greet(argv[1:])
+    print("usage: greeter.py hello"''')
+s=s.replace('''def main(''','''def greet(args):
+    """greet <name> [--shout]: strict parsing, errors go to stderr with exit 2."""
+    if len(args) == 0 or args[0].startswith("--") and args[0] == "--shout":
+        print("greet: missing name (expected: greet <name> [--shout])", file=sys.stderr)
+        return 2
+    name = args[0].strip()
+    if not name:
+        print("greet: name must not be empty", file=sys.stderr)
+        return 2
+    if name.startswith("--"):
+        print("greet: unknown option " + name, file=sys.stderr)
+        return 2
+    rest = args[1:]
+    if rest not in ([], ["--shout"]):
+        print("greet: unexpected argument (expected: greet <name> [--shout])", file=sys.stderr)
+        return 2
+    line = "Hello, " + name + "!"
+    print(line.upper() if rest else line)
+    return 0
+
+
+def main(''',1)
+open(p,'w').write(s)
+p='test_greeter.py'
+s=open(p).read()
+s=s.replace('''
+
+if __name__''','''
+
+class TestGreet(unittest.TestCase):
+    def test_greet(self):
+        r = run("greet", "  Grace Hopper  ")
+        self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "Hello, Grace Hopper!\\n", ""))
+
+    def test_shout(self):
+        r = run("greet", "Ada", "--shout")
+        self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "HELLO, ADA!\\n", ""))
+
+    def test_usage_errors(self):
+        for args in (["greet"], ["greet", ""], ["greet", "  "], ["greet", "--shout"],
+                     ["greet", "", "--shout"], ["greet", "Ada", "Bob"],
+                     ["greet", "Ada", "--shout", "--shout"], ["greet", "--loud", "Ada"],
+                     ["greet", "--foo"], ["greet", "--shout", "Ada"]):
+            r = run(*args)
+            self.assertEqual(r.returncode, 2, args)
+            self.assertEqual(r.stdout, "", args)
+            self.assertTrue(r.stderr and "Traceback" not in r.stderr, args)
+
+
+if __name__''',1)
+open(p,'w').write(s)
+E
+python3 -m py_compile greeter.py && python3 -m unittest 2>&1 | tail -3; git status --short
+
+===== tester
+R=/tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/work/demo
+mkdir -p $R/specs/greet/evidence
+S=$(mktemp -d); cp -r $R/. $S/; cd $S
+E=$R/specs/greet/evidence
+{
+echo "## E1"
+python3 greeter.py greet Ada | cat -A; echo "exit=${PIPESTATUS[0]}"
+python3 greeter.py greet "  Grace Hopper  " | cat -A
+python3 greeter.py greet Ada 2>err.txt >/dev/null; wc -c < err.txt
+} > $E/E1-greet.txt 2>&1
+{
+python3 greeter.py greet Ada --shout | cat -A; echo "exit=${PIPESTATUS[0]}"
+python3 greeter.py greet "grace hopper" --shout | cat -A
+python3 greeter.py greet Ada --shout 2>err.txt >/dev/null; wc -c < err.txt
+} > $E/E2-shout.txt 2>&1
+{
+python3 greeter.py greet >out.txt 2>err.txt; echo "exit=$?"; wc -c < out.txt; wc -c < err.txt; grep -c Traceback err.txt; grep -c 'usage: greeter.py hello' err.txt
+} > $E/E3-missing.txt 2>&1
+{
+for a in 'greet ""' 'greet "   "' 'greet --shout' 'greet "" --shout' 'greet "	"'; do
+  eval "python3 greeter.py $a" >out.txt 2>err.txt; code=$?
+  echo "[$a] exit=$code stdout_bytes=$(wc -c < out.txt) stderr_bytes=$(wc -c < err.txt) traceback=$(grep -c Traceback err.txt) unknown_cmd_usage=$(grep -c 'usage: greeter.py hello' err.txt)"
+done
+} > $E/E4-empty.txt 2>&1
+{
+for a in 'greet Ada Bob' 'greet Ada --shout --shout' 'greet --loud Ada' 'greet --foo' 'greet --shout Ada'; do
+  eval "python3 greeter.py $a" >out.txt 2>err.txt; code=$?
+  echo "[$a] exit=$code stdout_bytes=$(wc -c < out.txt) stderr_bytes=$(wc -c < err.txt) traceback=$(grep -c Traceback err.txt) unknown_cmd_usage=$(grep -c 'usage: greeter.py hello' err.txt)"
+done
+} > $E/E5-extra.txt 2>&1
+{
+python3 greeter.py hello | cat -A; echo "exit=${PIPESTATUS[0]}"
+python3 greeter.py nope 2>/dev/null; echo "exit=$?"
+(cd $R; git diff HEAD -- test_greeter.py | grep -c '^-[^-]')
+python3 -m unittest -v 2>&1 | grep -E 'test_hello|test_unknown_command|^OK'
+} > $E/E6-hello.txt 2>&1
+{
+python3 -m py_compile greeter.py; echo "compile=$?"
+grep -E '^\s*(import|from) ' greeter.py
+python3 -m unittest -v 2>&1 | tail -1
+} > $E/E7-stdlib.txt 2>&1
+cd $E; for f in E*.txt; do echo "=== $f"; cat $f; done; cd $R; git status --short
+
+===== MAIN
+ls specs/greet/evidence && cat > specs/greet/results.md <<EOF
+# Results: greet
+**Updated:** $(date -u +%Y-%m-%dT%H:%M:%SZ)
+**Review:** pending
+| eval | result | evidence |
+|------|--------|----------|
+| E1 | pass | evidence/E1-greet.txt: \`Hello, Ada!\$\` exit=0, \`Hello, Grace Hopper!\$\`, stderr 0 bytes |
+| E2 | pass | evidence/E2-shout.txt: \`HELLO, ADA!\$\` exit=0, \`HELLO, GRACE HOPPER!\$\`, stderr 0 bytes |
+| E3 | pass | evidence/E3-missing.txt: exit=2, stdout 0, stderr 55 bytes, traceback 0, unknown-command usage 0 |
+| E4 | pass | evidence/E4-empty.txt: all 5 cases exit=2, stdout 0, stderr >0, traceback=0, unknown_cmd_usage=0 |
+| E5 | pass | evidence/E5-extra.txt: all 5 cases exit=2, stdout 0, stderr >0, traceback=0, unknown_cmd_usage=0 |
+| E6 | pass | evidence/E6-hello.txt: \`hello, world\$\` exit=0, nope exit=2, removed test lines 0, existing tests ok, final OK |
+| E7 | pass | evidence/E7-stdlib.txt: compile=0, only import is sys, unittest last line OK |
+EOF
+git rev-parse HEAD; sed -n 1,12p .super-agents/state.md
+
+===== reviewer
+cd /tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/work/demo; cat specs/greet/RD.md; cat specs/greet/evals.md; git diff a94d01e; git ls-files --others --exclude-standard
+
+===== reviewer
+cd /tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/work/demo; python3 -m unittest 2>&1|tail -3; python3 greeter.py greet "  Grace Hopper  "|cat -A; python3 greeter.py greet Ada --shout; for a in 'greet ""' 'greet "   "' 'greet --shout' 'greet "" --shout' 'greet Ada Bob' 'greet --loud Ada' 'greet --shout Ada' 'greet " --shout"' 'greet Ada ""'; do eval "python3 greeter.py $a" >/tmp/o 2>/tmp/e; echo "[$a] $? $(wc -c </tmp/o) $(wc -c </tmp/e)"; done; python3 greeter.py hello; git diff HEAD -- test_greeter.py | grep -c '^-[^-]'
+
+===== MAIN
+sed -i 's/^\*\*Review:\*\* pending/**Review:** clean/' specs/greet/results.md && super-agents check-evals specs/greet --passed && git add -A && git commit -q -m "super-agents(greet): round 1, 7/7 evals pass
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>" && git log --oneline -2 && git show --stat HEAD | tail -5 && sed -i 's/^active: true/active: false/' .super-agents/state.md && super-agents board set specs/greet done
+

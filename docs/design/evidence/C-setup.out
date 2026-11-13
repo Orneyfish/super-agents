@@ -1,0 +1,20 @@
+wrote  /tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/work/demo/review.md
+added  super-agents block to /tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/work/demo/CLAUDE.md
+added  .super-agents/ to /tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/work/demo/.gitignore
+added  .job/ to /tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/work/demo/.gitignore
+added  .claude/worktrees/ to /tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/work/demo/.gitignore
+added  specs/* to /tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/work/demo/.gitignore
+added  !specs/tickets/ to /tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/work/demo/.gitignore
+ready  /tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/work/demo
+review.md: no TODO left
+Ran 2 tests in 0.031s
+
+OK
+a94d01e greeter: base project, set up for super-agents
+__pycache__/
+.super-agents/
+.job/
+.claude/worktrees/
+specs/*
+!specs/tickets/
+remotes: 0

@@ -1,0 +1,4 @@
+Strings found in /opt/claude-code/bin/claude (Claude Code 2.1.322), read-only grep:
+To start worktrees from your current HEAD instead, set worktree.baseRef to "head" in Claude Code settings.
+bt().worktree?.sparsePaths
+(the second line shows settings are read as a nested "worktree" object)

@@ -1,0 +1,6 @@
+# approval step, run by hand in a shell as the user would via /super-agents:mark-ready (its two commands)
+OK: specs/greet
+ok specs/greet -> ready
+cbdb36704447b6dc906a08bf4ba025fdc1b18939c53db3e268cf68fc0e2d75e0
+3:**Status:** ready
+main

@@ -1,0 +1,30 @@
+Evidence for super-agents-design-changes.md (revision 2). Everything here was produced against COPIES of the plugin
+(work/plugin-copy, work/plugin-probe, work/plugin-stubworker) at commit plugin-copy-source-commit.txt; the real repo was not touched.
+
+Offline (no model, no network)
+  A-repro.sh / A-repro.out            Part A: reproductions A1..A9, one VERDICT line each
+  B10-tree-id.sh / B10-tree-id.out    tree-id cost on a real repo (read-only intent) and a 60,000-file synthetic repo
+  B10-side-effect.txt                 the mtime side effect of B10 on the real repo's existing git objects
+  B4-baseRef-binary-strings.txt       the worktree.baseRef setting text found in the CLI binary
+  B-setup*.sh/.out, C-setup.sh/.out   how each scratch repository was built
+
+Live (8 headless runs, see live/costs.txt); each run folder has: prompt.txt, invocation.txt, stream.jsonl, debug.log,
+hooklog/ (raw hook stdin JSON + filtered env, one pair per event) and hooklog-summary.txt
+  live/run1-main-probe                B1 B2 B3 B4(default, with a remote) B6 B7 B9
+  live/run2-resume-baseref-head       B5, B4 with worktree.baseRef=head
+  live/run3-router-allowlist          B8, nesting depth 3, B4 with no remote, --agent main thread agent_type
+  live/run4-write-eval                C: write-eval (haiku)
+  live/run5-review-loop               C: review-loop (sonnet); timeline.txt, eval-gate-exits.txt, eval-gate-decisions.txt,
+                                      main-and-reviewer-commands.txt
+  live/run6-tool-lists                subagent tools: allowlist vs the reviewer's disallowedTools
+  live/run7-worker-gate               the real worker-gate.sh against a stub worker in a worktree
+  live/run8-auto-mode-worktree        worktree git and out-of-worktree writes under --permission-mode auto
+  live/C-artifacts                    the spec, approval, results.md, evidence/, state.md and git state from part C
+hooks/                                the logging hook, the deny probe, the project settings that registered them
+probe-agents/                         the probe agent definitions and the stub worker
+run-claude.sh, summarize-hooklog.py   the runner (isolation flags) and the log summariser
+
+Note (added when persisting into the repo): the raw per-run logs named above (stream.jsonl, debug.log, hooklog/) were
+left out to keep the repo small (about 4 MB). The small summaries (hooklog-summary.txt, timeline.txt, costs.txt,
+isolation-check.txt, C-artifacts/) are kept. The design doc's citations of stream.jsonl / debug.log / hooklog/ point at
+files that exist only in the original scratch run.

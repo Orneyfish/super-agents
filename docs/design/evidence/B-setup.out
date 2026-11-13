@@ -1,0 +1,8 @@
+* d219841 (probe/prev) D: previous attempt, one ahead of C
+* 581943c (HEAD -> integration/test) C: integration branch (checked out)
+* fce6683 (main) B: local main, ahead of origin/main
+* ffffaf5 (origin/main, origin/HEAD) A: base (this is origin/main)
+status: 0 changed files
+origin	/tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/work/probe-origin.git (fetch)
+origin	/tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/work/probe-origin.git (push)
+refs/remotes/origin/main

@@ -1,0 +1,42 @@
+### real repo, read-only (the largest under ~/Projects by tracked files)
+repo: /home/orneyfish/Projects/Hermes Agent Auto
+tracked files: 543   working tree size: 2.7G
+git ls-files:            1 ms
+git status --porcelain:  n/a (it may refresh the repo's index, so it is not run on a read-only repo)
+tree id, cold index:     66 ms   -> 629c416e535666b70803701ef7346eafdc913efa
+tree id, warm index:     9 ms   -> 629c416e535666b70803701ef7346eafdc913efa
+cold and warm agree: yes
+HEAD tree:               532488bf413470fabb591e50a3cf19b18e9baa74  (differs from the tree id when the working tree is dirty or has untracked files)
+files in the repo's git dir changed by this script: 12
+
+### synthetic repo in the scratchpad: 60,000 files of about 1 KB in 600 directories
+repo: /tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/work/bigrepo
+tracked files: 60000   working tree size: 235M
+git ls-files:            8 ms
+git status --porcelain:  n/a (it may refresh the repo's index, so it is not run on a read-only repo)
+tree id, cold index:     636 ms   -> 72b2f34b95734f89e65c053d88c1fe3e7cae6e43
+tree id, warm index:     47 ms   -> 72b2f34b95734f89e65c053d88c1fe3e7cae6e43
+cold and warm agree: yes
+HEAD tree:               72b2f34b95734f89e65c053d88c1fe3e7cae6e43  (differs from the tree id when the working tree is dirty or has untracked files)
+files in the repo's git dir changed by this script: 6
+
+### same, after editing 10 files and adding 5 untracked ones
+repo: /tmp/claude-1000/-home-orneyfish-Projects-super-agents/2c22f04b-b9ab-4769-bd57-0b137b70d3ea/scratchpad/work/bigrepo
+tracked files: 60000   working tree size: 235M
+git ls-files:            8 ms
+git status --porcelain:  n/a (it may refresh the repo's index, so it is not run on a read-only repo)
+tree id, cold index:     686 ms   -> 68efe85216d47eba2e98f499c61ff26ebd2d4eb9
+tree id, warm index:     89 ms   -> 68efe85216d47eba2e98f499c61ff26ebd2d4eb9
+cold and warm agree: yes
+HEAD tree:               72b2f34b95734f89e65c053d88c1fe3e7cae6e43  (differs from the tree id when the working tree is dirty or has untracked files)
+files in the repo's git dir changed by this script: 1
+
+### stability: the id is unchanged by a commit of the same content
+before commit: f410982a26111ebe6d1ad0d3c3dd675d0a65532f
+after commit:  f410982a26111ebe6d1ad0d3c3dd675d0a65532f
+stable across commit: yes
+
+### NOTE (side effect, found after the run): the script was meant to leave the measured repo untouched. It created no objects and
+### changed no content, index or refs there, but git "freshens" objects that already exist, even through an alternate object
+### directory: 11 loose objects and one pack file in "~/Projects/Hermes Agent Auto/.git/objects" had their mtime set to the run time
+### (their birth times are all 2026-08-27; see B10-side-effect.txt). Nothing was reverted, to avoid a second write to that repo.
