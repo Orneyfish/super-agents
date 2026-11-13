@@ -22,6 +22,7 @@ case " $kinds " in *" $kind "*) ;; *) fail "RD.md '**Kind:**' must be one of: $k
 deliv=$(sed -n 's/^\*\*Deliverable:\*\*[[:space:]]*//p' "$rd" | head -1 | tr -d '\r' | sed 's/[[:space:]]*$//')
 [ "$kind" != code ] && [ -z "$deliv" ] && fail "a $kind piece of work needs '**Deliverable:** <path>[, <path>]' in RD.md"
 delivs=(); if [ -n "$deliv" ]; then while IFS= read -r p; do p=$(sed 's/^ *//;s/ *$//' <<<"$p")
+  p=${p#'`'}; p=${p%'`'}   # models write paths in markdown backticks; accept one pair around a path
   [[ $p =~ ^[A-Za-z0-9._/\ -]+$ && $p != *..* && $p != /* && $p != specs/* ]] || fail "deliverable '$p' must be a path inside the repository: letters, digits, . _ / - and spaces, no '..', not absolute, not under specs/"
   delivs+=("$p"); done <<<"$(tr ',' '\n' <<<"$deliv")"; fi
 [ "$ready" = 1 ] && [ "$st" != ready ] && fail "Status is '$st'; the user must approve the evals (Status: ready) before building"
