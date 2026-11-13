@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Usage: check-evals.sh <feature-dir> [--ready] [--passed]       e.g. specs/checkout or specs/tickets/003-login
-#   (no flag)  RD.md + evals.md are well formed: every requirement is covered, every eval complete, no TODO left
+#   (no flag)  RD.md + evals.md are well formed: every requirement is covered, every eval complete, no TODO left, **Kind:** (missing = code) is a known kind, a non-code kind names a **Deliverable:** and every deliverable path is repo-relative and not under specs/
 #   --ready    also **Status:** must be ready (the user approved the evals)
-#   --passed   also every eval has exactly one row in results.md, a pass pointing at a non-empty evidence/ file, a Review line (if any) says clean or findings-fixed, and evals.md and RD.md (its Status line aside) match the fingerprints written at approval (no fingerprint = fail)
+#   --passed   also every deliverable is a non-empty file in this checkout, every eval has exactly one row in results.md, a pass pointing at a non-empty evidence/ file, a Review line (if any) says clean or findings-fixed, and evals.md and RD.md (its Status line aside) match the fingerprints written at approval (no fingerprint = fail)
 # Exit 0 = ok. Exit 1 = every problem printed as a FAIL line.
 here="$(cd "$(dirname "$0")" && pwd)"; d="${1:?feature dir}"; shift; rd="$d/RD.md"; ev="$d/evals.md"; rs="$d/results.md"; bad=0; ready=0; passed=0
 for a; do case $a in --ready) ready=1;; --passed) passed=1;; esac; done
@@ -14,6 +14,16 @@ hdr() { sed -n "s/^\*\*$1:\*\* *\([a-z]*\).*/\1/p" "$rd" | head -1; }
 st=$(hdr Status); rk=$(hdr Risk)
 case "$st" in draft|ready|building|done) ;; *) fail "RD.md needs '**Status:** draft|ready|building|done' (got '$st')";; esac
 case "$rk" in low|medium|high) ;; *) fail "RD.md needs '**Risk:** low|medium|high' (got '$rk')";; esac
+# keep equal to the headings of templates/kinds.md (tests/run.sh checks it)
+kinds="code document research analysis design plan operations"
+kind=$(sed -n 's/^\*\*Kind:\*\* *\([^[:space:]]*\).*/\1/p' "$rd" | head -1); kind=${kind:-code}
+case " $kinds " in *" $kind "*) ;; *) fail "RD.md '**Kind:**' must be one of: $kinds (got '$kind')";; esac
+# a deliverable may hold spaces, dots and slashes, so it is read whole instead of with hdr
+deliv=$(sed -n 's/^\*\*Deliverable:\*\*[[:space:]]*//p' "$rd" | head -1 | tr -d '\r' | sed 's/[[:space:]]*$//')
+[ "$kind" != code ] && [ -z "$deliv" ] && fail "a $kind piece of work needs '**Deliverable:** <path>[, <path>]' in RD.md"
+delivs=(); if [ -n "$deliv" ]; then while IFS= read -r p; do p=$(sed 's/^ *//;s/ *$//' <<<"$p")
+  [[ $p =~ ^[A-Za-z0-9._/\ -]+$ && $p != *..* && $p != /* && $p != specs/* ]] || fail "deliverable '$p' must be a path inside the repository: letters, digits, . _ / - and spaces, no '..', not absolute, not under specs/"
+  delivs+=("$p"); done <<<"$(tr ',' '\n' <<<"$deliv")"; fi
 [ "$ready" = 1 ] && [ "$st" != ready ] && fail "Status is '$st'; the user must approve the evals (Status: ready) before building"
 
 grep -qE '^- (N?FR)-[0-9]+:' "$rd" || fail "RD.md defines no requirements (lines like '- FR-1: ...')"
@@ -73,6 +83,12 @@ if [ "$passed" = 1 ]; then
     [[ $ef == evidence/* && $ef != *..* ]] || { fail "$id passes without an evidence/ file (results.md says '${evc:-nothing}')"; continue; }
     [ -s "$d/$ef" ] || fail "$id evidence file $ef does not exist or is empty"
   done
+  # the deliverable is looked up in this checkout (a worker's own worktree for a ticket), not in the main one
+  if [ ${#delivs[@]} -gt 0 ]; then
+    if top=$(git -C "$d" rev-parse --show-toplevel 2>/dev/null); then
+      for p in "${delivs[@]}"; do [ -s "$top/$p" ] || fail "deliverable '$p' does not exist or is empty in $top"; done
+    else fail "cannot check the deliverable: $d is not inside a git repository"; fi
+  fi
 fi
 
 [ "$bad" = 0 ] && echo "OK: $d"

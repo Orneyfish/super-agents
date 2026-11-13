@@ -2,6 +2,8 @@
 
 **Status:** draft
 **Risk:** TODO
+**Kind:** TODO
+**Deliverable:** TODO
 
 ## Summary
 TODO one or two sentences: what the user can do afterwards that they could not before.
@@ -16,7 +18,7 @@ TODO one or two sentences: what the user can do afterwards that they could not b
 - NFR-1: TODO performance, accessibility or security requirement
 
 ## Touches
-- TODO the parts of the app this feature changes
+- TODO the files or parts this work changes
 
 ## Must not touch
 - TODO the parts that must stay exactly as they are

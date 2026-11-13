@@ -3,7 +3,7 @@
 Approved by the user before building. Nobody edits this file while building; outcomes go in results.md.
 
 ## Setup
-1. TODO install and start steps. A ticket runs on its own port (3100 + ticket number), with its own data directory (a `mktemp -d` outside the repository, so nothing it writes is committed) and test account (tNNN), so tickets built in parallel never share state.
+1. TODO install and start steps. Only when the work has a running app: a ticket runs on its own port (3100 + ticket number), with its own data directory (a `mktemp -d` outside the repository, so nothing it writes is committed) and test account (tNNN), so tickets built in parallel never share state. Otherwise a scratch directory (a `mktemp -d` outside the repository), and never the real system, mailbox or source data.
 
 ## E1: TODO short title
 - covers: FR-1
@@ -14,4 +14,4 @@ Approved by the user before building. Nobody edits this file while building; out
 ## Definition of done
 - [ ] Every eval above has a pass row in results.md, with evidence
 - [ ] Nothing under "Out of scope" was built and nothing under "Must not touch" changed
-- [ ] The project's lint and build pass
+- [ ] The pre-merge checks in `review.md` pass

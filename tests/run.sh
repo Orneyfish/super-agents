@@ -172,6 +172,25 @@ git -C $M3 config core.autocrlf true
 mkdir -p $M3/.claude; git -C $M3 worktree add -q $M3/.claude/worktrees/w -b w; WT=$M3/.claude/worktrees/w/specs/tickets/001-x
 fp $WT; t eval-worker-forged-fp 1 $X/check-evals.sh $WT --passed;   has eval-worker-forged-fp "no approval fingerprint"
 fp $M3/specs/tickets/001-x; t eval-worker-main-fp 0 $X/check-evals.sh $WT --passed
+# work kinds: **Kind:** (missing = code) and **Deliverable:** in RD.md; --passed also needs each deliverable to be a non-empty file
+kd() { sed "s|^\*\*Risk:\*\* low|&\n$2|" $1/RD.md > $1/RD.new; mv $1/RD.new $1/RD.md; }   # kd <dir> <lines>: add lines under Risk
+K=$T/k1; mkfix $K; t kind-missing-is-code 0 $X/check-evals.sh $K
+kd $K '**Kind:** banana'; t kind-unknown 1 $X/check-evals.sh $K;     has kind-unknown "must be one of"
+sedi 's/banana/document/' $K/RD.md; t kind-document-no-deliverable 1 $X/check-evals.sh $K; has kind-document-no-deliverable "needs '**Deliverable:**"
+for bd in '../x.md' '/etc/passwd' 'specs/a.md' 'a/../b.md' 'a;b.md'; do sedi '/^\*\*Deliverable:/d' $K/RD.md; kd $K "**Deliverable:** $bd"; t "deliverable-rejected-$bd" 1 $X/check-evals.sh $K; has "deliverable-rejected-$bd" "must be a path inside the repository"; done
+sedi '/^\*\*Deliverable:/d' $K/RD.md; kd $K '**Deliverable:** reports/Q3 churn.md, data/out.csv'; t deliverable-ok 0 $X/check-evals.sh $K
+sedi 's/document/code/' $K/RD.md; t kind-code-deliverable-optional 0 $X/check-evals.sh $K
+# --passed: the deliverable is read from the checkout the gate runs in
+git -C $K init -q -b main; fp $K; t deliverable-missing 1 $X/check-evals.sh $K --passed;   has deliverable-missing "does not exist or is empty"
+mkdir -p $K/reports $K/data; : > "$K/reports/Q3 churn.md"; echo a > $K/data/out.csv; t deliverable-empty 1 $X/check-evals.sh $K --passed; has deliverable-empty "reports/Q3 churn.md"
+echo ok > "$K/reports/Q3 churn.md"; t deliverable-present 0 $X/check-evals.sh $K --passed
+N=$T/k2; mkfix $N/specs/tickets/001-x; kd $N/specs/tickets/001-x '**Kind:** document'; kd $N/specs/tickets/001-x '**Deliverable:** report.md'
+git -C $N init -q -b main; git -C $N add -A >/dev/null; git -C $N -c user.email=t@t -c user.name=t commit -qm base
+mkdir -p $N/.claude; git -C $N worktree add -q $N/.claude/worktrees/w -b w; NW=$N/.claude/worktrees/w/specs/tickets/001-x
+fp $N/specs/tickets/001-x; echo ok > $N/report.md   # in the user's checkout only: the worker's worktree has no deliverable
+t deliverable-worktree-missing 1 $X/check-evals.sh $NW --passed;   has deliverable-worktree-missing "does not exist or is empty"
+echo ok > $N/.claude/worktrees/w/report.md; t deliverable-worktree-present 0 $X/check-evals.sh $NW --passed
+cp -R $K $T/k3; rm -rf $T/k3/.git; t deliverable-not-git 1 $X/check-evals.sh $T/k3 --passed; has deliverable-not-git "not inside a git repository"
 
 # ---- eval-gate.sh (Stop hook of the review-loop)
 mkdir -p .super-agents; st=.super-agents/state.md; in="{\"cwd\":\"$T/repo\"}"
@@ -641,6 +660,39 @@ grep -q 'at least 5 agent runs each' "$R/agents/router.md" && ok || bad "the rou
 for ref in $(grep -ohE 'super-agents:[a-z][a-z-]*' "$R"/agents/*.md "$R"/skills/*/SKILL.md | sort -u); do r=${ref#super-agents:}
   [ -f "$R/agents/$r.md" ] || [ -d "$R/skills/$r" ] && ok || bad "'$ref' names no agent or skill (typo in an Agent(...) allowlist silently stops dispatch)"
 done
+
+# ---- work kinds (WP0 guards): the plugin is for any kind of work, not only code
+# gq FILE PHRASE...: every phrase must appear in FILE (fixed-string match); one pass or one FAIL per file
+gq() { f=$R/$1; shift; miss=""; for ph in "$@"; do grep -qF -- "$ph" "$f" || miss+=" [$ph]"; done; [ -z "$miss" ] && ok || bad "$f lacks:$miss"; }
+kf=$R/templates/kinds.md; kinds="code document research analysis design plan operations"
+kh=$(sed -n 's/^## \([a-z]*\)$/\1/p' "$kf" | grep -xE 'code|document|research|analysis|design|plan|operations' | tr '\n' ' ')
+[ "$kh" = "code document research analysis design plan operations " ] && ok || bad "kinds-file: templates/kinds.md must have the seven kind headings in order, has: $kh"
+for k in $kinds; do sec=$(awk -v k="$k" '$0=="## " k{f=1;next} /^## /{f=0} f' "$kf")
+  for b in 'done when:' 'eval patterns:' 'reviewer checks:' 'pre-merge checks:'; do grep -q "^- $b" <<<"$sec" && ok || bad "kinds-file: kind $k lacks '- $b'"; done; done
+[ "$(wc -l < "$kf")" -le 120 ] && ok || bad "kinds-file: templates/kinds.md is over 120 lines; every agent that reads it pays for it"
+cl=$(sed -n 's/^kinds="\(.*\)"$/\1/p; s/^kinds=(\(.*\))$/\1/p' "$R/scripts/check-evals.sh" | head -1 | tr -s ' |' ' ' | sed 's/ $//')
+[ "$cl" = "$kinds" ] && ok || bad "kinds-in-sync: the kinds list in scripts/check-evals.sh ('$cl') must equal the headings of templates/kinds.md"
+gq templates/RD.md '**Kind:**' '**Deliverable:**'
+gq templates/evals.md 'pre-merge checks'; ! grep -q 'lint and build pass' "$R/templates/evals.md" && ok || bad "evals-template: still says 'lint and build pass'"
+gq skills/write-eval/SKILL.md 'super-agents template kinds.md' '**Kind:**' 'frontier' 'recommended answer' 'GLOSSARY.md'
+[ "$(grep -c 'Done when' "$R/skills/write-eval/SKILL.md")" -ge 7 ] && ok || bad "write-eval: every numbered step should end with 'Done when' (at least 7)"
+gq skills/write-tickets/SKILL.md 'frontier' 'recommended answer' 'GLOSSARY.md' 'one fresh context' 'before any ticket is written' 'binary'
+gq skills/classify-risk/SKILL.md 'relies on' 'RISK: <level>'
+gq agents/tester.md 'names no server' 'quoted passage' 'unverifiable'
+gq agents/reviewer.md '## Spec' '## Standards' 'Out of scope' 'kinds.md' 'GLOSSARY.md' 'VERDICT: clean'
+for a in builder worker teammate; do gq agents/$a.md 'pre-merge checks'; done; gq agents/builder.md 'GLOSSARY.md'
+gq skills/review-loop/SKILL.md 'setup-project' 'deterministic check'
+gq agents/merger.md 'pre-merge checks' 'no checks configured'
+gq agents/checker.md 'kinds.md' 'no app' 'PORT IN USE'
+gq agents/router.md '**Kind:**'
+gq skills/fix-bug/SKILL.md 'goes red' 'ranked'; gq agents/reproducer.md 'goes red' 'ranked'
+gq templates/review.md '## How to test this project' 'Pre-merge checks:' 'unsupported claim'
+gq skills/setup-project/SKILL.md 'git init' 'Pre-merge checks'
+gq scripts/session-start.sh 'any kind of work'
+gq README.md 'mattpocock/skills'
+# a prompt may not tell the model to run a skill that is user-invoked only (disable-model-invocation): it tells the user, with the slash form
+bad_inv=$(grep -rnE '(Skill tool|invoke|call|run|use)[^.]*super-agents:(mark-ready|review-loop|setup-project)' "$R/agents" "$R/skills" | grep -vE '/super-agents:' | head -3)
+[ -z "$bad_inv" ] && ok || bad "invocation: a prompt tells the model to run a user-only skill: $bad_inv"
 
 # ---- sa-native.sh: finds, fetches and verifies the native helper; never runs an unverified download
 t native-override 0 env SUPER_AGENTS_CORE=/bin/echo "$X/sa-native.sh" hello;    has native-override "hello"

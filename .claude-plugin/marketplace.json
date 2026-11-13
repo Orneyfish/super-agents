@@ -8,9 +8,9 @@
     {
       "name": "super-agents",
       "source": "./",
-      "description": "Verify-before-done workflow: evals, fresh-context build/verify/review loop, risk-scaled strictness, first-time-user testing, bug fixing via git.",
+      "description": "Verify-before-done workflow for any kind of work (code, documents, research, analysis, design, plans, operations): evals, fresh-context build/verify/review loop, risk-scaled strictness, first-time-user testing, bug fixing via git.",
       "version": "0.3.1"
     }
   ],
-  "description": "Verify-before-done agent workflow: evals, fresh-context build/test/review loop, and a router that runs many tickets in parallel."
+  "description": "Verify-before-done agent workflow for any kind of work: evals, fresh-context build/test/review loop, and a router that runs many tickets in parallel."
 }
