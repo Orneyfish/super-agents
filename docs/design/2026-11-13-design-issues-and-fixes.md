@@ -229,6 +229,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### N-01 A ticket branch can change other tickets' approved evals, `review.md` and `CLAUDE.md`
 
+- **Status: fixed** in `agents/merger.md` step 2 with a test in `tests/run.sh`. The doc's `evidence` exclude missed files inside the folder; the shipped one is `evidence/*`.
+
 - **Severity:** high. **Effort:** S. **Roadmap:** not covered. (Roadmap (b) records a copy of the
   fingerprint at `start`, which protects a ticket already building; a ticket that has not started
   reads the tampered fingerprint.)
@@ -318,6 +320,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
   `FAIL: RD.md changed after the user approved it`.
 
 ### N-03 The worker gate matches one exact agent name
+
+- **Status: contested, not fixed.** `tests/run.sh` (the `#7` comment above `wgate-bare-worker`) deliberately asserts that a bare `worker` is NOT gated. The regex fix below would break that test; decide first, or fix N-04 instead.
 
 - **Severity:** medium. **Effort:** S. **Roadmap:** not covered (the roadmap keeps the
   `super-agents:worker` literal).

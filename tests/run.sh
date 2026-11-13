@@ -466,6 +466,16 @@ done
 
 # ---- repo consistency (static): things that break the plugin silently if they drift
 ok() { pass=$((pass+1)); }; bad() { fail=$((fail+1)); echo "FAIL $*"; }
+# N-01: the merger's approved-file check (taken from merger.md) rejects a branch that touches another ticket's evals or review.md, and accepts its own results.md
+m=$T/n01; git init -q -b main $m; mkdir -p $m/specs/tickets/001-a $m/specs/tickets/002-b; (cd $m && git config user.email t@t && git config user.name t \
+  && for n in 001-a 002-b; do echo e > specs/tickets/$n/evals.md; done && echo r > review.md && git add . && git commit -qm base \
+  && git switch -q -c ok && mkdir specs/tickets/001-a/evidence && echo p > specs/tickets/001-a/evidence/s.png && echo r2 > specs/tickets/001-a/results.md && echo code > src.txt && git add . && git commit -qm ok \
+  && git switch -q main && git switch -q -c bad && echo x >> specs/tickets/002-b/evals.md && echo y >> review.md && git add . && git commit -qm bad && git switch -q main)
+mc=$(grep -o 'git diff --name-only HEAD\.\.\.\$SHA -- specs/tickets[^`]*' "$R/agents/merger.md" | head -1 | sed 's/NNN/001/g')
+[ -n "$mc" ] || bad "merger.md lost its approved-file check"
+[ -z "$(cd $m && SHA=ok && eval "$mc")" ] && ok || bad "N-01: the approved-file check rejects a branch that only adds results.md and evidence"
+[ "$(cd $m && SHA=bad && eval "$mc" | sort | tr '\n' ' ')" = "review.md specs/tickets/002-b/evals.md " ] && ok || bad "N-01: the approved-file check misses another ticket's evals.md or review.md"
+
 # M1: the plugin's bin/ is on the agents' PATH, scripts/ is not: prompts must say 'super-agents job-status' / 'super-agents board', never the bare script
 for f in "$R"/agents/*.md "$R"/skills/*/SKILL.md; do
   grep -qE 'job-status\.sh|board\.py' "$f" && bad "$f names job-status.sh or board.py directly; use 'super-agents job-status' / 'super-agents board'" || ok
