@@ -178,6 +178,8 @@ K=$T/k1; mkfix $K; t kind-missing-is-code 0 $X/check-evals.sh $K
 kd $K '**Kind:** banana'; t kind-unknown 1 $X/check-evals.sh $K;     has kind-unknown "must be one of"
 sedi 's/banana/document/' $K/RD.md; t kind-document-no-deliverable 1 $X/check-evals.sh $K; has kind-document-no-deliverable "needs '**Deliverable:**"
 for bd in '../x.md' '/etc/passwd' 'specs/a.md' 'a/../b.md' 'a;b.md'; do sedi '/^\*\*Deliverable:/d' $K/RD.md; kd $K "**Deliverable:** $bd"; t "deliverable-rejected-$bd" 1 $X/check-evals.sh $K; has "deliverable-rejected-$bd" "must be a path inside the repository"; done
+sedi '/^\*\*Deliverable:/d' $K/RD.md; kd $K '**Deliverable:** `reports/Q3 churn.md`, `data/out.csv`'; t deliverable-backticks-ok 0 $X/check-evals.sh $K   # models write paths in backticks
+sedi '/^\*\*Deliverable:/d' $K/RD.md; kd $K '**Deliverable:** `reports/q3.md`, one page (450 words).'; t deliverable-trailing-prose 1 $X/check-evals.sh $K; has deliverable-trailing-prose "must be a path inside the repository"
 sedi '/^\*\*Deliverable:/d' $K/RD.md; kd $K '**Deliverable:** reports/Q3 churn.md, data/out.csv'; t deliverable-ok 0 $X/check-evals.sh $K
 sedi 's/document/code/' $K/RD.md; t kind-code-deliverable-optional 0 $X/check-evals.sh $K
 # --passed: the deliverable is read from the checkout the gate runs in
