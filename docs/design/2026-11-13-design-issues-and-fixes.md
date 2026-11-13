@@ -400,6 +400,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### N-05 A worker that stops to ask the user is blocked by its own gate
 
+- **Status: fixed.** New heartbeat phase `waiting` (`scripts/job-status.sh`): `scripts/worker-gate.sh` lets that stop through before the block counter, `core/src/scan.rs` reports `PROBLEM NNN <who> waits for the user: <question>` instead of "silent", and `agents/worker.md` asks through it instead of `SendMessage`, which it does not have. Tests: `wgate-waiting-phase`, `scan-waiting-for-user`, `core/tests/board_scan.rs`. Not done: step 6 (`job await` in v0.5.0). Not verified live: that the router resumes the worker with the answer.
+
 - **Severity:** medium. **Effort:** S. **Roadmap:** partly (roadmap (b) gives sessions
   `loop await`; for workers it offers only `job blocked`, so the same gap remains in v0.5.0).
 - **Evidence:** `agents/worker.md:35`: "`SendMessage` to `main` ... then end your turn saying you
@@ -754,7 +756,7 @@ roadmap; unmarked items are additions to the named release.
 | N-02 | `RD.md` approved but not fingerprinted | medium | S-M | new, probed | not covered |
 | N-03 | Worker gate matches one exact agent name | medium | S | skipped | not covered |
 | N-04 | `.claude` copies duplicate and shadow the plugin | medium | S | skipped | not covered |
-| N-05 | Worker that asks the user is blocked; no `SendMessage` | medium | S | new, probed | partly (b) |
+| N-05 | Worker that asks the user is blocked; no `SendMessage` | medium | S | fixed | partly (b) |
 | N-06 | Router single point of failure; state in context only | medium | M | new, read | partly (g), (e) |
 | N-07 | Checker races the next merge; reproducers share a port | medium | S | new, read | not covered |
 | N-08 | Models, effort, turn limits without a rule or ceiling | medium | S-M | new, read | not covered |

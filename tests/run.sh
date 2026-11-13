@@ -209,6 +209,10 @@ t job-name-grammar 2 $X/job-status.sh --name ../x init 001 "$T/repo/$D" building
 wg other-plugin:worker; silent wgate-other-plugin-worker; wg worker; silent wgate-bare-worker
 wg coworker; silent wgate-coworker; wg super-agents:teammate; silent wgate-teammate   # N-11: near-miss names
 $X/job-status.sh blocked why; wg super-agents:worker; silent wgate-blocked-phase
+# N-05: a worker that stopped to ask the user is not told to "fix and re-test", and the wait does not spend a block
+rm -f .job/gate_blocks; $X/job-status.sh waiting "which currency?"; wg super-agents:worker; silent wgate-waiting-phase
+[ ! -e .job/gate_blocks ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL wgate-waiting-phase: waiting for the user counted as a block"; }
+grep -q 'job-status waiting' "$R/agents/worker.md" && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL worker.md no longer uses the waiting phase to ask the user (N-05)"; }
 $X/job-status.sh building; echo 3 > .job/gate_blocks; wg super-agents:worker; has wgate-cap "released after 3 blocks"
 # M2: going back to building (a fix round) starts a fresh block count
 echo 2 > .job/gate_blocks; $X/job-status.sh building; [ ! -f .job/gate_blocks ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL building did not reset gate_blocks"; }
@@ -241,6 +245,8 @@ js ticket=001 phase=building started="$(iso 41)" updated="$(iso 40)" note="" age
 mkdir -p .super-agents; printf 'ignore=001\n' > .super-agents/watchdog.conf; t scan-ignore 0 $BOARD scan; silent scan-ignore
 js ticket=001 phase=blocked started="$(iso 2)" updated="$(iso 1)" note="db down" agent=a > .job/status-001-a.json; : > .super-agents/watchdog.conf
 t scan-blocked 0 $BOARD scan;                                has scan-blocked "blocked: db down"
+js ticket=001 phase=waiting started="$(iso 41)" updated="$(iso 40)" note="which currency?" agent=a > .job/status-001-a.json
+t scan-waiting-for-user 0 $BOARD scan;                       has scan-waiting-for-user "PROBLEM 001 a waits for the user: which currency?"; hasnt scan-waiting-for-user "silent for"
 # L6: one unreadable status file or one bad number in watchdog.conf must not hide the other problems
 $BOARD set 003 building >/dev/null
 js ticket=001 phase=building agent=a > .job/status-001-a.json
