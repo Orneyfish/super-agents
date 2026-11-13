@@ -87,6 +87,22 @@ fn heartbeat_limits_follow_the_phase() {
 }
 
 #[test]
+fn a_worker_waiting_for_the_user_is_reported_as_waiting_not_as_silent() {
+    let t = fixture();
+    let root = t.path();
+    set_building(root, "001");
+    job(
+        root,
+        ".job/status-001-a.json",
+        &heartbeat("waiting", 41, 40, "which currency?"),
+    );
+    assert_eq!(
+        scan(root).stdout,
+        "PROBLEM 001 a waits for the user: which currency?\n"
+    );
+}
+
+#[test]
 fn worktree_heartbeats_count_and_watchdog_conf_sets_limits_and_ignores() {
     let t = fixture();
     let root = t.path();

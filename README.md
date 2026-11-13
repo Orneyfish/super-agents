@@ -7,7 +7,16 @@ A Claude Code plugin that makes agents prove their work before calling it done, 
 
 ## Install
 
-Needs `bash`, `git` and `curl` (Linux or macOS). The ticket board and the hooks' JSON run on `sa-core`, a small native helper: the first time it is needed it is downloaded for your platform from this repo's GitHub release and checked against `dist/checksums/`. `super-agents install-core` does that up front; `cargo build --release --manifest-path core/Cargo.toml` builds it from source instead; `SUPER_AGENTS_CORE=<path>` uses a binary you provide, and `SUPER_AGENTS_CORE_URL=<base URL>` downloads from a mirror, and `SUPER_AGENTS_CORE_TIMEOUT=<seconds>` caps each download attempt (default 20). After a failed download the hooks do not try again for 10 minutes; `super-agents install-core` retries at once. Without `sa-core` the hooks, including the done-gates, are switched off and let everything through; each session then says so.
+Needs `bash`, `git` and `curl`.
+
+| Platform | Status |
+|---|---|
+| Linux (x86_64, arm64) | Supported: tested in CI and run live. |
+| macOS 12.3 or newer (Intel, Apple silicon) | Supported: tested in CI (`macos-latest`). 12.3 is the minimum because the scripts use `readlink -f`; older versions were not tested. |
+| Windows (x86_64) under Git Bash | Tested in CI only (the shell suite and the Rust tests); never run live, and the install steps below use `ln -s`. |
+| Anything else (Windows on ARM, other CPUs, the BSDs) | No prebuilt `sa-core`: build it with cargo, or the hooks are off (each session names the platform). |
+
+The ticket board and the hooks' JSON run on `sa-core`, a small native helper: the first time it is needed it is downloaded for your platform from this repo's GitHub release and checked against `dist/checksums/`, then again every time it runs (a cached copy that no longer matches is deleted and fetched again). `super-agents install-core` does that up front; `cargo build --release --manifest-path core/Cargo.toml` builds it from source instead; `SUPER_AGENTS_CORE=<path>` uses a binary you provide, and `SUPER_AGENTS_CORE_URL=<base URL>` downloads from a mirror, and `SUPER_AGENTS_CORE_TIMEOUT=<seconds>` caps each download attempt (default 20). After a failed download the hooks do not try again for 10 minutes; `super-agents install-core` retries at once. Without `sa-core` the hooks, including the done-gates, are switched off and let everything through; each session then says so.
 
 **Claude Code** (everything works: skills, hooks, router and workers):
 
@@ -48,9 +57,9 @@ What degrades outside Claude Code: the hooks that stop an agent from saying "don
 
 **One feature, in this session:** `/super-agents:write-eval <name>` → you approve → `/super-agents:review-loop <name>`.
 
-**Many features, in parallel:** `/super-agents:write-tickets <request or PRD>` → read the tickets → `/super-agents:mark-ready 001 002` → run `superagent` in a terminal and say "start with 001" (or just "start"). Workers build from committed files only, so `superagent` first lists the uncommitted tickets, `review.md`, `CLAUDE.md` and `.gitignore` (your own unfinished edits to them included) and offers to commit them. A ticket you write or approve after `superagent` has started is not in new workers' worktrees until you run `super-agents commit-tickets` in a terminal (the router cannot run git; it will ask you to).
+**Many features, in parallel:** `/super-agents:write-tickets <request or PRD>` → read the tickets → `/super-agents:mark-ready 001 002` → run `superagent` in a terminal and say "start with 001" (or just "start"). Workers build from the committed files of the branch you are on (`superagent` sets `worktree.baseRef` to `head` for its session; without it a worktree in a repository with a remote starts from the remote's default branch), so `superagent` first lists the uncommitted tickets, `review.md`, `CLAUDE.md` and `.gitignore` (your own unfinished edits to them included) and offers to commit them. A ticket you write or approve after `superagent` has started is not in new workers' worktrees until you run `super-agents commit-tickets` in a terminal (the router cannot run git; it will ask you to).
 
-**Keeping specs out of your PRs:** `setup` git-ignores `specs/<name>/`, so single-feature specs are never committed (specs a project already tracks stay tracked). `specs/tickets/` must be committed while tickets run, so the router removes it for you: once the last ticket is `done` and the checker confirms it, the merger commits the removal of `specs/tickets/` on the integration branch (`super-agents drop-specs`; the files stay in the branch's history). You run nothing, and any other file under `specs/` is left alone. Tickets you add afterwards start a fresh board. Run `super-agents drop-specs` by hand only to retry, for example if the router session ended before it ran.
+**Keeping specs out of your PRs:** `setup` git-ignores the plugin's own files in `specs/<name>/` (`RD.md`, `evals.md`, `.evals.sha256`, `results.md`, `mockup.html`, `evidence/`), so single-feature specs are never committed; anything else under `specs/` is the project's and is not ignored. `specs/tickets/` must be committed while tickets run, so the router removes it for you: once the last ticket is `done` and the checker confirms it, the merger commits the removal of `specs/tickets/` on the integration branch (`super-agents drop-specs`; the files stay in the branch's history). You run nothing, and any other file under `specs/` is left alone. Tickets you add afterwards start a fresh board. Run `super-agents drop-specs` by hand only to retry, for example if the router session ended before it ran.
 
 ## Commands
 
@@ -70,16 +79,34 @@ What degrades outside Claude Code: the hooks that stop an agent from saying "don
 
 | Agent | Role |
 |---|---|
-| `router` | The only agent you talk to. Opus, high effort, and **no write or shell tools**: it can only read, start agents and message them. Shows you a run plan and asks before it starts any tickets (name tickets to skip the question, or say "keep going" to stop being asked as more unblock), starts the watchdog, dispatches, checks each result against the ticket's evals, queues merges, relays decisions to you. |
+| `router` | The only agent you talk to. High effort, and **no write or shell tools**: it can only read, start agents and message them. Shows you a run plan and asks before it starts any tickets (name tickets to skip the question, or say "keep going" to stop being asked as more unblock), starts the watchdog, dispatches, checks each result against the ticket's evals, queues merges, relays decisions to you. |
 | `worker` | One solo ticket in its own git worktree: builds, has the tester and reviewer check it, writes `results.md` + `evidence/`, commits on its branch. Sonnet. |
 | `teammate` | One member of an agent team on a `team` ticket. Works in the main checkout on files it owns, agreed first in `contract.md`; the last-named teammate integrates and tests. |
 | `merger` | Lands a solo branch, a team's work, or a fix branch on the current branch: merges without committing, runs lint + build, then commits or aborts; refuses a branch that changed the approved `evals.md`; marks the ticket done. One at a time. |
-| `checker` | After a merge, walks the ticket and its neighbouring flows in a real browser on port 3000 as a first-time user. Read-only. Reports only breaks it reproduced twice. |
+| `checker` | After a merge, walks the ticket and its neighbouring flows in a real browser on port 3000 as a first-time user. Fixes nothing (it has Bash, so that is a prompt rule). Reports only breaks it reproduced twice. |
 | `reproducer` | Reproduces a bug twice in its own worktree; fixes it on its own branch if small and local; otherwise reports. |
 | `watchdog` | Background. Runs a scan every 10 minutes and tells the router about silent, blocked or slow workers, dependency cycles, a down app. Rules live in `.super-agents/watchdog.conf`. |
 | `tester` | Runs a ticket's evals exactly as written and returns PASS/FAIL with evidence. Uses `agent-browser` for browser checks, falls back to the Chrome tools. |
-| `builder`, `reviewer` | The review-loop's fresh-context builder and read-only reviewer (workers reuse the reviewer). |
+| `builder`, `reviewer` | The review-loop's fresh-context builder and reviewer (workers reuse the reviewer). Both have a `tools` allowlist: no Agent tool, no web tools, no MCP connectors except the reviewer's browser; the reviewer has no Edit or Write. |
 | `first-time-user` | The blind newcomer used by the first-time-user skill. |
+
+**Models, effort and turn limits** (the frontmatter of `agents/*.md`; `tests/run.sh` fails when this table and the files disagree):
+
+| Agent | Model | Effort | maxTurns | Why |
+|---|---|---|---|---|
+| `router` | claude-fable-5-2 | high | none | The orchestrator: it decides what runs, reads every report and makes the acceptance call. It is your own session, so nothing caps its turns. |
+| `worker` | sonnet | high | 200 | Does the building; a gate, a tester and a reviewer follow it. |
+| `teammate` | sonnet | high | 200 | Same work as a worker, shared checkout. |
+| `builder` | sonnet | default | 150 | The review-loop's build step; the tester and reviewer follow it every round. |
+| `tester` | sonnet | default | 80 | Runs written checks literally; no judgement to buy with effort. |
+| `reviewer` | sonnet | high | 80 | The independent check. Same model as the builder: independence comes from the fresh context only. |
+| `merger` | sonnet | high | 60 | Resolves conflicts by hand and nothing reviews its result but lint and build. |
+| `checker` | sonnet | default | 80 | Walks the app as a newcomer. |
+| `reproducer` | sonnet | high | 120 | Has to find a cause, not only a symptom. |
+| `watchdog` | sonnet | medium | 400 | Long-lived; forwards and summarises. |
+| `first-time-user` | sonnet | default | none | Pinned so its cost does not depend on the model of the session that starts it. |
+
+The turn limits are ceilings for an agent that loops, set well above anything seen so far (the one measured run, a toy feature, used 2-3 tool calls per agent); they are not tuned on real projects yet. A solo ticket costs at least five agent runs (worker, tester, reviewer, merger, checker) and up to four tester and four reviewer runs with three fix rounds; the router shows that total in its plan. There is no budget ceiling.
 
 ## Ticket folder
 
@@ -88,7 +115,7 @@ specs/tickets/BOARD.md                 # | # | Title | Status | Mode | Runs |
 specs/tickets/001-slug/
   RD.md        # **Status:** draft|ready|building|done, **Risk:**, FR-/NFR- requirements, Touches, Must not touch, Decisions, Out of scope
   evals.md     # Setup, E1..En (check / pass when / fail when / covers), Definition of done. Approved by you; not edited while building
-  .evals.sha256  # fingerprint of evals.md, written when you approve it (mark-ready; CRLF counts as LF, so Git's line-ending conversion on Windows does not matter); the done-gate fails if evals.md changes afterwards
+  .evals.sha256  # fingerprints of evals.md (line 1) and of RD.md without its Status line (line 2), written when you approve it (mark-ready; CRLF counts as LF, so Git's line-ending conversion on Windows does not matter); the done-gate fails if either file changes afterwards
   mockup.html  # UI tickets only
   contract.md  # team tickets: who owns which files, the names they share
   results.md   # written by the worker/tester: one row per eval, pass/fail, evidence path
@@ -100,8 +127,9 @@ Ticket `NNN` runs on port `3100+NNN` with test account `tNNN`; the main checkout
 ## Hooks (Claude Code; always on while the plugin is enabled)
 
 - **SessionStart**: states the "done means proven" agreement; in a git repo without `review.md` suggests `/super-agents:setup-project`; mentions an active loop or a ticket board.
-- **Stop**: while a review-loop is active, blocks "done" until every eval passes in `results.md`, each pass row pointing at a non-empty `evidence/` file, and `evals.md` matches the fingerprint written when you approved it (no fingerprint counts as a failure; re-approve with `mark-ready`). Only the session that started the loop is gated by it (its id is the `session:` line of `.super-agents/state.md`, recorded by the review-loop); other sessions in the repo never are. A state file without that line falls back to the first session that stops, which an unrelated session can be. Released when the loop waits on you, when the state file is over 12 hours old, or after 3 blocks.
-- **SubagentStop**: a worker cannot finish until the same holds (or it declared itself blocked, or after 3 blocks; going back to `building` resets the count). A gate that cannot run says so. Teammates on team tickets are not gated: their tickets rely on the integrator's tester run and the router's read of the results.
+- **Stop**: while a review-loop is active (and no subagent of the session is still running: a stop then is a wait and passes unchecked), blocks "done" until every eval passes in `results.md`, with exactly one row per eval, each pass row pointing at a non-empty `evidence/` file, a `**Review:**` line (when there is one) that says `clean` or `findings-fixed`, and `evals.md` matches the fingerprint written when you approved it (no fingerprint counts as a failure; re-approve with `mark-ready`). Only the session that started the loop is gated by it (its id is the `session:` line of `.super-agents/state.md`, recorded by the review-loop); other sessions in the repo never are. A state file without that line falls back to the first session that stops, which an unrelated session can be. Released when the loop waits on you, when the state file is over 12 hours old, or after 3 blocks.
+- **`super-agents board set <X> done`** (a command, not a hook): runs the same check and refuses to mark anything done while it fails, so "done" does not depend on a hook having fired.
+- **SubagentStop**: a worker cannot finish until the same holds (or it declared itself blocked, or stopped to ask you something (phase `waiting`), or after 3 blocks; going back to `building` resets the count). A gate that cannot run says so. Teammates on team tickets are not gated: their tickets rely on the integrator's tester run and the router's read of the results.
 - **PreToolUse**: keeps only the first-time-user agent away from the code (Bash denylist, and `file:` URLs in browser calls).
 
 ## Known limits
@@ -120,7 +148,7 @@ Ticket `NNN` runs on port `3100+NNN` with test account `tNNN`; the main checkout
 `bash tests/run.sh` runs the script tests plus consistency checks (manifest versions, hook scripts exist and are executable, agent names match their files, every `super-agents:<name>` reference resolves). It needs `git` and a Rust toolchain (1.89 or newer; it builds `core/` first), fails if any script calls `jq` or Python, and runs on Linux and macOS. `cd core && cargo test` runs the Rust tests, on Windows too.
 
 - **CI** (`.github/workflows/ci.yml`): the tests on Linux and macOS, ShellCheck on Linux, and `cargo fmt`, `clippy` and `cargo test` for `core/` (the Rust tests also on Windows), for every push and pull request.
-- **Release:** bump the version in `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` and `core/Cargo.toml`; run `gh workflow run build-core.yml --ref <branch> -f version=X.Y.Z`, which builds sa-core for five platforms into a draft release; commit its checksums with `gh release download vX.Y.Z -p checksums.txt -O dist/checksums/vX.Y.Z.txt`; then push the tag `vX.Y.Z`. `release.yml` re-runs ShellCheck and the tests, checks the draft's binaries against the committed checksums, and publishes. Merge to `main` after it is published, so installs never see a version whose binaries are not downloadable.
+- **Release:** bump the version in `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` and `core/Cargo.toml`; run `gh workflow run build-core.yml --ref <branch> -f version=X.Y.Z`, which builds sa-core for five platforms into a draft release; commit its checksums with `gh release download vX.Y.Z -p checksums.txt -O dist/checksums/vX.Y.Z.txt`; then push the tag `vX.Y.Z`. `release.yml` also refuses to publish when `core/` at the tag differs from the commit the binaries were built from (re-run `build-core.yml` then), and asks the released Linux binary for its version. `release.yml` re-runs ShellCheck and the tests, checks the draft's binaries against the committed checksums, and publishes. Merge to `main` after it is published, so installs never see a version whose binaries are not downloadable.
 - **Local gate** (optional): `git config core.hooksPath .githooks` runs the tests before every `git push`.
 
 The agents and skills are prompts, so the checks above cannot test them. `evals/` holds model-run cases for `classify-risk` (including whether it fires from a plain question) and `write-eval` (writes a draft spec and builds nothing). Run them by hand, not in CI, since they cost about $2 on your credential: `claude plugin eval . --allow-tools Write Edit --ablation none --no-publish --max-cost-usd 3`. They run without `Bash`, so they cannot exercise the skills' `super-agents` validation steps. The router, workers, merger and team mode have no automated test and still need a live run.

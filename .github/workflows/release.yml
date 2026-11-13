@@ -25,11 +25,15 @@ jobs:
           [ -s "dist/checksums/$GITHUB_REF_NAME.txt" ] || { echo "dist/checksums/$GITHUB_REF_NAME.txt is not committed" >&2; exit 1; }
       - name: ShellCheck
         run: shellcheck -x -S warning bin/super-agents scripts/*.sh tests/run.sh .githooks/pre-push
+      - name: Rust tests
+        working-directory: core
+        run: cargo test --locked
       - name: Tests
         run: bash tests/run.sh
 
   # Only this job can write to the repository (a draft release is only visible to a token that can write). It runs no
-  # repository code: it reads the committed checksums as data, compares the draft's binaries with them, and publishes.
+  # repository code, with one exception in a step that has no token (the verified Linux binary is asked for its version): it
+  # reads the committed checksums as data, compares the draft's binaries with them and with the tagged sources, and publishes.
   publish:
     needs: test
     runs-on: ubuntu-latest
@@ -40,6 +44,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
+          fetch-depth: 0   # the commit the binaries were built from must be here to compare with
       - name: Draft binaries must match the committed checksums
         env:
           GH_TOKEN: ${{ github.token }}
@@ -48,6 +53,20 @@ jobs:
           gh release download "$GITHUB_REF_NAME" --dir assets --pattern 'sa-core-*'
           (cd assets && sha256sum -c "../dist/checksums/$GITHUB_REF_NAME.txt")
           [ "$(ls assets | wc -l)" -eq "$(wc -l < "dist/checksums/$GITHUB_REF_NAME.txt")" ] || { echo "asset count differs from the checksum list" >&2; exit 1; }
+      # the checksum ties the binaries to the draft, not to this tag: a fix committed to core/ after build-core.yml ran would be in
+      # the tagged source and missing from the published binaries
+      - name: The binaries must be built from this tag's sa-core sources
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          built=$(gh release view "$GITHUB_REF_NAME" --json targetCommitish --jq .targetCommitish)
+          git cat-file -e "$built^{commit}" || { echo "the draft release was built from '$built', which is not a commit in this repository" >&2; exit 1; }
+          git diff --quiet "$built" "$GITHUB_SHA" -- core/ || { echo "sa-core sources changed after the binaries were built ($built); re-run build-core.yml" >&2; exit 1; }
+      - name: The released Linux binary reports this version
+        run: |
+          chmod +x assets/sa-core-x86_64-unknown-linux-musl
+          got=$(assets/sa-core-x86_64-unknown-linux-musl --version)
+          [ "$got" = "sa-core ${GITHUB_REF_NAME#v}" ] || { echo "the released binary says '$got', the tag is $GITHUB_REF_NAME" >&2; exit 1; }
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}

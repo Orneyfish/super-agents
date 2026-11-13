@@ -109,6 +109,12 @@ fn job_problems(id: &str, js: &[Job], limits: &Limits, now: f64, out: &mut Vec<S
                 "PROBLEM {id} {} reports blocked: {}",
                 j.who, j.note
             ));
+        } else if phase == "waiting" {
+            // it stopped to ask the user: not silent, and the router must hear the question
+            out.push(format!(
+                "PROBLEM {id} {} waits for the user: {}",
+                j.who, j.note
+            ));
         } else if phase != "done" {
             // testing/reviewing: the worker waits on its own tester or reviewer and cannot heartbeat
             let limit = if phase == "testing" || phase == "reviewing" {
