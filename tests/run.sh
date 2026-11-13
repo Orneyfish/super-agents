@@ -100,6 +100,15 @@ t eval-passed-traversal 1 $X/check-evals.sh $D --passed;           has eval-pass
 sedi 's#evidence/../RD.md#evidence/gone.png: ok#' $D/results.md; : > $D/evidence/gone.png
 t eval-passed-empty-file 1 $X/check-evals.sh $D --passed;          has eval-passed-empty-file "does not exist or is empty"
 echo ok > $D/evidence/gone.png; t eval-passed-again 0 $X/check-evals.sh $D --passed
+# C-03: one row per eval: a pass row followed by a later fail row for the same eval is not a pass (the first row used to win)
+cp $D/results.md $T/rs.bak; printf '| E1 | fail | later run |\n' >> $D/results.md
+t duplicate-row-rejected 1 $X/check-evals.sh $D --passed;          has duplicate-row-rejected "E1 has 2 rows"
+# C-03: a results.md that carries a Review line is not passing while the review is pending or has open findings
+printf '**Review:** pending\n' | cat - $T/rs.bak > $D/results.md; t review-pending-rejected 1 $X/check-evals.sh $D --passed; has review-pending-rejected "review is not finished"
+printf '**Review:** open: 2\n' | cat - $T/rs.bak > $D/results.md; t review-open-rejected 1 $X/check-evals.sh $D --passed
+printf '**Review:** findings-fixed\n' | cat - $T/rs.bak > $D/results.md; t review-findings-fixed-ok 0 $X/check-evals.sh $D --passed
+printf '**Review:** clean\n' | cat - $T/rs.bak > $D/results.md; t review-clean-ok 0 $X/check-evals.sh $D --passed; cp $T/rs.bak $D/results.md
+grep -q 'run every eval again' "$R/agents/worker.md" && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL worker.md lets an old pass row stand after a fix (C-03)"; }
 # #7: a fingerprint with CRLF line ends (Windows, or git autocrlf) still matches
 cp $D/.evals.sha256 $T/fp.bak; sed 's/$/\r/' $T/fp.bak > $D/.evals.sha256; t eval-passed-crlf-fingerprint 0 $X/check-evals.sh $D --passed; cp $T/fp.bak $D/.evals.sha256
 # the evals the user approved are fingerprinted when marked ready; changing them afterwards fails the gate

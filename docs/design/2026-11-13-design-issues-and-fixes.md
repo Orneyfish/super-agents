@@ -77,6 +77,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### C-03 Evidence is not bound to the code that lands; builders certify themselves
 
+- **Status: partially fixed.** First steps in `scripts/check-evals.sh --passed`: a second row for the same eval is rejected (`duplicate-row-rejected`; the first row used to win), and a `**Review:**` line, when present, must say `clean` or `findings-fixed` (`review-pending-rejected`; the line was read by no script). `agents/worker.md` re-runs every eval after the last fix instead of "the failing evals and their neighbours". Remains, all of roadmap (c): results are still a table the gated agent writes, not a record tied to a tree id and written by the tester; a `results.md` without a Review line still passes; `findings-fixed` is still undefined; the tester reuses whatever answers on its port; the merger runs lint and build only, not the evals on the merged tree.
+
 - **Severity:** high. **Effort:** L. **Roadmap:** section (c); v0.5.0 steps 4 and 7.
 - **Evidence:** `scripts/check-evals.sh:59-66` accepts a `pass` cell and any non-empty file.
   `results.md` is written by the gated party (`agents/worker.md:21`, `SKILL.md:42`). Partial
@@ -765,7 +767,7 @@ roadmap; unmarked items are additions to the named release.
 |---|---|---|---|---|---|
 | C-01 | Shell arithmetic and prompt text from repo content | high | S | fixed | v0.4.1 item 1 |
 | C-02 | `done` not gated; agent owns releases; re-fingerprint | high | M | partially fixed | v0.5.0 steps 3, 5 |
-| C-03 | Evidence not bound to code; self-certified results; first row wins | high | L | open | v0.5.0 steps 4, 7 |
+| C-03 | Evidence not bound to code; self-certified results; first row wins | high | L | partially fixed | v0.5.0 steps 4, 7 |
 | C-04 | Gates fail open; trust agent-written `dir`; launcher | high | S-M | partially fixed | v0.4.1 items 4-6; v0.5.0 step 5 |
 | C-05 | Worktrees start from the remote default branch | high | S | fixed | v0.4.1 item 2 |
 | C-06 | Stop gate spends its blocks on waits | high | S | fixed | v0.4.1 item 3 |
