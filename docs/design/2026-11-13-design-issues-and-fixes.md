@@ -493,6 +493,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### N-07 The checker shares the main checkout with the next merge; two reproducers share a port
 
+- **Status: fixed.** `agents/router.md` "When work comes back" step 3 makes a merge, its check and any reproducer fix one queue slot and allows one reproducer at a time; static guard in `tests/run.sh`. Prompt rule only: not run live.
+
 - **Severity:** medium. **Effort:** S. **Roadmap:** not covered.
 - **Evidence:** `agents/router.md:48` serialises mergers ("Only one merger runs at a time") and
   holds merges and the checker only for a building team ticket. `router.md:49` starts the checker
@@ -758,7 +760,7 @@ roadmap; unmarked items are additions to the named release.
 | N-04 | `.claude` copies duplicate and shadow the plugin | medium | S | skipped | not covered |
 | N-05 | Worker that asks the user is blocked; no `SendMessage` | medium | S | fixed | partly (b) |
 | N-06 | Router single point of failure; state in context only | medium | M | new, read | partly (g), (e) |
-| N-07 | Checker races the next merge; reproducers share a port | medium | S | new, read | not covered |
+| N-07 | Checker races the next merge; reproducers share a port | medium | S | fixed | not covered |
 | N-08 | Models, effort, turn limits without a rule or ceiling | medium | S-M | new, read | not covered |
 | N-09 | Release not tied to the source of its binaries | low-medium | S | new, read | not covered |
 | N-10 | Portability: Windows status, platforms, ports, `readlink` | low | S | new, partly unverified | not covered |
