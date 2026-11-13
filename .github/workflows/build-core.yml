@@ -41,6 +41,8 @@ jobs:
           if gh release view "v$VERSION" >/dev/null 2>&1; then
             # re-running for a published version would replace the binaries users have already verified against
             [ "$(gh release view "v$VERSION" --json isDraft --jq .isDraft)" = true ] || { echo "release v$VERSION is already published; its assets must not be replaced" >&2; exit 1; }
+            # release.yml compares the tag's core/ with this target, so it must be the commit this run builds from
+            gh release edit "v$VERSION" --target "$GITHUB_SHA"
           else
             gh release create "v$VERSION" --draft --title "v$VERSION" --notes "sa-core binaries for v$VERSION (draft)" --target "$GITHUB_SHA"
           fi

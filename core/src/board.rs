@@ -13,6 +13,11 @@ use std::sync::LazyLock;
 /// Windows default) a worker's worktree is checked out with CRLF, and its evals.md must still match. A carriage
 /// return that is not part of a CRLF is content and still counts.
 pub fn fingerprint(file: &Path) -> io::Result<String> {
+    Ok(format!("{:x}", Sha256::digest(lf_bytes(file)?)))
+}
+
+/// A file's bytes with every CRLF read as LF.
+fn lf_bytes(file: &Path) -> io::Result<Vec<u8>> {
     let bytes = fs::read(file)?;
     let mut text = Vec::with_capacity(bytes.len());
     for (i, &b) in bytes.iter().enumerate() {
@@ -20,7 +25,18 @@ pub fn fingerprint(file: &Path) -> io::Result<String> {
             text.push(b);
         }
     }
-    Ok(format!("{:x}", Sha256::digest(text)))
+    Ok(text)
+}
+
+/// The fingerprint of an RD.md as the user approved it: like `fingerprint`, but without the first `**Status:**` line,
+/// which `board set` rewrites on every status change. The second line of `.evals.sha256` (`<hex>  RD.md`).
+pub fn fingerprint_rd(file: &Path) -> io::Result<String> {
+    let bytes = lf_bytes(file)?;
+    let text = String::from_utf8_lossy(&bytes);
+    Ok(format!(
+        "{:x}",
+        Sha256::digest(STATUS_LINE.replace(&text, "").as_bytes())
+    ))
 }
 
 pub const STATUSES: [&str; 4] = ["draft", "ready", "building", "done"];
@@ -239,7 +255,7 @@ pub fn check(root: &Path) -> (String, bool) {
 static STATUS_LINE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^\*\*Status:\*\*[^\r\n]*").expect("status line regex"));
 
-/// `board set`: RD.md's Status line, the fingerprint on `ready`, and the board row for a ticket folder.
+/// `board set`: RD.md's Status line, the fingerprints on `ready`, and the board row for a ticket folder.
 pub fn set_status(root: &Path, target: &str, status: &str) -> Result<(), String> {
     if !STATUSES.contains(&status) {
         return Err(format!("status must be one of {STATUSES_TEXT}"));
@@ -258,6 +274,7 @@ pub fn set_status(root: &Path, target: &str, status: &str) -> Result<(), String>
 
     let rd = dir.join("RD.md");
     let text = fs::read_to_string(&rd).map_err(|e| format!("{}: {e}", rd.display()))?;
+    let was = STATUS_WORD.captures(&text).map(|c| c[1].to_string());
     let line = format!("**Status:** {status}");
     let updated = if STATUS_LINE.is_match(&text) {
         STATUS_LINE
@@ -267,14 +284,20 @@ pub fn set_status(root: &Path, target: &str, status: &str) -> Result<(), String>
         let nl = if text.contains("\r\n") { "\r\n" } else { "\n" };
         text.replacen(nl, &format!("{nl}{nl}{line}{nl}"), 1)
     };
-    fs::write(&rd, updated).map_err(|e| format!("{}: {e}", rd.display()))?;
+    write_atomic(&rd, &updated).map_err(|e| format!("{}: {e}", rd.display()))?;
 
-    // the fingerprint of what the user approved; check-evals.sh --passed compares against it
+    // The fingerprint of what the user approved; check-evals.sh --passed compares against it. It is written when a draft is
+    // approved (or when there is none yet), not on every `ready`: setting an approved ticket `ready` again must not make
+    // an edit made since look approved. Approving again goes through `draft`.
     let evals = dir.join("evals.md");
-    if status == "ready" && evals.exists() {
+    let fp = dir.join(".evals.sha256");
+    let approved = matches!(was.as_deref(), Some("ready" | "building" | "done")) && fp.exists();
+    if status == "ready" && evals.exists() && !approved {
         let hex = fingerprint(&evals).map_err(|e| format!("{}: {e}", evals.display()))?;
-        let fp = dir.join(".evals.sha256");
-        fs::write(&fp, format!("{hex}\n")).map_err(|e| format!("{}: {e}", fp.display()))?;
+        let rd_hex = fingerprint_rd(&rd).map_err(|e| format!("{}: {e}", rd.display()))?;
+        // line 1 is all that older versions wrote and read; line 2 covers RD.md
+        write_atomic(&fp, &format!("{hex}\n{rd_hex}  RD.md\n"))
+            .map_err(|e| format!("{}: {e}", fp.display()))?;
     }
 
     let board = board_path(root);
@@ -282,6 +305,24 @@ pub fn set_status(root: &Path, target: &str, status: &str) -> Result<(), String>
         set_board_row(&board, &number, status).map_err(|e| format!("{}: {e}", board.display()))?;
     }
     Ok(())
+}
+
+/// Replaces a file in one step, so a reader that takes no lock (the router's Read tool, check-evals, the scan) sees the
+/// old content or the new, never an empty or half-written file: a temp file in the same folder, renamed over the target.
+fn write_atomic(path: &Path, content: &str) -> io::Result<()> {
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(format!(".tmp{}", std::process::id()));
+    let tmp = PathBuf::from(tmp);
+    fs::write(&tmp, content)?;
+    for _ in 0..3 {
+        if fs::rename(&tmp, path).is_ok() {
+            return Ok(());
+        }
+        // Windows: the rename fails while another program holds the target open
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let _ = fs::remove_file(&tmp);
+    fs::write(path, content) // what this did before: not atomic, but the change is not lost
 }
 
 /// `NNN` when `dir` is a `specs/tickets/NNN-*` folder.

@@ -1,7 +1,9 @@
 ---
 name: builder
 description: Builds or repairs one feature from its RD.md in a fresh context. Started only by the review-loop.
+tools: Read, Grep, Glob, Bash, Edit, Write, TodoWrite
 model: sonnet
+maxTurns: 150
 ---
 
 You are the builder in a build / verify / review loop. You start with no memory of earlier rounds; everything you need is in the prompt and the repo.

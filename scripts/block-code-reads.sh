@@ -4,9 +4,12 @@ here="$(cd "$(dirname "$0")" && pwd)"; get() { "$here/sa-native.sh" hookio get "
 in=$(cat)
 grep -q 'first-time-user' <<<"$in" || exit 0                                   # cheap pre-filter, most calls end here
 "$here/sa-native.sh" --version >/dev/null 2>&1 || { echo '{"systemMessage": "super-agents: the first-time-user code block is off: sa-core is not available here (run super-agents install-core)."}'; exit 0; }
-re='(^|:)first-time-user$'; [[ $(get agent_type <<<"$in") =~ $re ]] || exit 0
-
 deny() { "$here/sa-native.sh" hookio emit deny "$1"; exit 0; }
+# input that does not parse: this hook is the only control on its path, so the first-time-user's call is denied; anyone else is told
+at=$(get agent_type <<<"$in") || {
+  grep -Eq '"agent_type"[[:space:]]*:[[:space:]]*"([^"]*:)?first-time-user"' <<<"$in" && deny "super-agents: hook input unreadable, so this call is denied for the first-time-user agent."
+  "$here/sa-native.sh" hookio emit message "super-agents: hook input unreadable; the first-time-user code block was not evaluated."; exit 0; }
+re='(^|:)first-time-user$'; [[ $at =~ $re ]] || exit 0
 msg="Blocked: you are a first-time user and must not look at the app's code. Use the app only through its UI, URL or CLI."
 
 case $(get tool_name <<<"$in") in

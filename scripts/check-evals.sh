@@ -2,7 +2,7 @@
 # Usage: check-evals.sh <feature-dir> [--ready] [--passed]       e.g. specs/checkout or specs/tickets/003-login
 #   (no flag)  RD.md + evals.md are well formed: every requirement is covered, every eval complete, no TODO left
 #   --ready    also **Status:** must be ready (the user approved the evals)
-#   --passed   also every eval has a pass row in results.md pointing at a non-empty evidence/ file, and evals.md matches the fingerprint written at approval (no fingerprint = fail)
+#   --passed   also every eval has exactly one row in results.md, a pass pointing at a non-empty evidence/ file, a Review line (if any) says clean or findings-fixed, and evals.md and RD.md (its Status line aside) match the fingerprints written at approval (no fingerprint = fail)
 # Exit 0 = ok. Exit 1 = every problem printed as a FAIL line.
 here="$(cd "$(dirname "$0")" && pwd)"; d="${1:?feature dir}"; shift; rd="$d/RD.md"; ev="$d/evals.md"; rs="$d/results.md"; bad=0; ready=0; passed=0
 for a; do case $a in --ready) ready=1;; --passed) passed=1;; esac; done
@@ -49,14 +49,23 @@ if [ "$passed" = 1 ]; then
   fi
   if [ -f "$fp" ]; then
     if got=$("$here/sa-native.sh" fingerprint "$ev"); then
-      [ "$got" = "$(tr -d ' \r\n' < "$fp")" ] || fail "evals.md changed after the user approved it; restore it (git checkout) or ask the user to re-approve"
+      [ "$got" = "$(sed -n 1p "$fp" | tr -d ' \r\n')" ] || fail "evals.md changed after the user approved it; restore it (git checkout) or ask the user to re-approve"
+      # line 2, "<hex>  RD.md": RD.md as approved, without its Status line. A one-line file was written by an older version: nothing to compare.
+      want=$(sed -n '2s/[[:space:]].*//p' "$fp")
+      if [ -n "$want" ]; then [ "$("$here/sa-native.sh" fingerprint-rd "$rd")" = "$want" ] || fail "RD.md changed after the user approved it; restore it (git checkout) or ask the user to re-approve"; fi
     else
       fail "could not fingerprint $ev; run 'super-agents install-core'"
     fi
   else   # no fingerprint means nothing proves these are the approved evals; tickets approved before fingerprints existed need one re-approval
     fail "no approval fingerprint (.evals.sha256) for $d; ask the user to approve it again with mark-ready"
   fi
+  # a Review line, when results.md has one, must say the review ended without open findings (a file without the line is older or hand-made)
+  if rv=$(grep -m1 '^\*\*Review:\*\*' "$rs" 2>/dev/null); then
+    case "$rv" in '**Review:** clean'*|'**Review:** findings-fixed'*) ;; *) fail "the review is not finished or has open findings (results.md says '$rv')";; esac
+  fi
   for id in $(grep -oE '^## E-?[0-9]+([:[:space:]]|$)' "$ev" | grep -oE 'E-?[0-9]+'); do
+    rows=$(grep -cE "^\| *$id *\|" "$rs" 2>/dev/null)
+    [ "${rows:-0}" -le 1 ] || { fail "$id has $rows rows in results.md; one row per eval, from the last tester run"; continue; }
     row=$(grep -E "^\| *$id *\|" "$rs" 2>/dev/null | head -1)
     res=$(awk -F'|' '{gsub(/ /,"",$3); print tolower($3)}' <<<"$row"); evc=$(awk -F'|' '{gsub(/^ +| +$/,"",$4); print $4}' <<<"$row")
     [ "$res" = pass ] || { fail "$id is not passing (results.md says '${res:-no row}')"; continue; }

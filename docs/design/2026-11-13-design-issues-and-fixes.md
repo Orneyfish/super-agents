@@ -3,6 +3,15 @@
 Written 2026-11-13 against branch `docs/architecture-and-design-issues` (plugin 0.3.1). Paths are
 relative to the repository root. Design only: nothing in the repository was changed.
 
+**Update, 2026-11-13, branch `fix/all-design-issues`:** the fixes were then made, one commit per
+issue. Each issue below starts with a **Status** line (fixed, partially fixed with what remains, or
+skipped with the reason), and the Part 4 table carries the same word. The evidence, line numbers and
+"How it fails" text under each issue describe the code **before** the fix. Result: 8 fixed
+(C-01, C-05, C-06, N-01, N-02, N-05, N-07, N-09), 11 partially
+fixed (C-02, C-03, C-04, C-08, C-09, C-10, C-11, N-06, N-08, N-10, N-11), 3 skipped because each
+conflicts with a decision the user made (C-07, N-03, N-04). Tests after the last commit:
+`bash tests/run.sh` 652 passed, 0 failed; `cargo test --locked` 46 passed, 0 failed.
+
 Companions, which this register references instead of repeating:
 
 - **Review** = `docs/design/2026-11-11-design-review.md` (findings P1 to P9).
@@ -37,6 +46,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### C-01 Shell arithmetic runs repository content in both gates
 
+- **Status: fixed.** Counters accept only `^[0-9]{1,3}$` (`eval-gate.sh`, `worker-gate.sh`); a tracked or symlinked `state.md` / `.job/status.json` is ignored with a fixed notice; `session-start.sh` applies the `dir` and `round` grammar; `job-status --name` has a grammar. Tests: `gate-arith-injection`, `gate-tracked-state-ignored`, `gate-symlink-state-ignored`, `worker-gate-arith-injection`, `job-name-grammar`, `session-hostile-dir`. Not done from roadmap (a): the `note`, `ignore` and `app_url` grammars and the `realpath under specs/` rule for `dir`.
+
 - **Severity:** high. **Effort:** S. **Roadmap:** section (a); v0.4.1 item 1.
 - **Evidence:** `scripts/eval-gate.sh:24-28` (`$((n+1))` on `gate_blocks` from `state.md`);
   `scripts/worker-gate.sh:15-17` (same on `.job/gate_blocks`); `scripts/session-start.sh:15`
@@ -53,6 +64,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
   verdict inverted (`gate-arith-injection`: the marker file must not exist and the gate still blocks).
 
 ### C-02 The transition to `done` is not gated, and the gated agent owns every release
+
+- **Status: partially fixed.** First steps, backward compatible: (1) `super-agents board set <X> done` runs `check-evals --passed` itself and refuses with the `FAIL` lines, so `done` is gated on the status change whatever `state.md` says (`done-path-is-gated`; the check is in `bin/super-agents`, so `sa-core board set` called directly skips it until `verify` is ported); the review-loop runs it before setting `active: false`, and the merger reports a refusal. (2) The fingerprint is written when a draft is approved or when none exists, not on a later `ready` (`core/src/board.rs`; `fingerprint-not-rewritten`, `core/tests/board_set.rs`); re-approval goes through `draft`, which `mark-ready` now says. Remains: the edge table (any status is still reachable from any other except as above), `loop` and `job` subcommands replacing hand edits of `state.md`, the self-service releases (`awaiting_user`, the block counters, `blocked`), the transition log, and `draft` then `ready` by an agent, which still re-approves (roadmap rule 6).
 
 - **Severity:** high. **Effort:** M. **Roadmap:** section (b); v0.5.0 steps 3 and 5.
 - **Evidence:** `skills/review-loop/SKILL.md:63` sets `active: false` first, and
@@ -72,6 +85,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
   `super-agents loop finish <dir>` exits 1 and the status stays `building`.
 
 ### C-03 Evidence is not bound to the code that lands; builders certify themselves
+
+- **Status: partially fixed.** First steps in `scripts/check-evals.sh --passed`: a second row for the same eval is rejected (`duplicate-row-rejected`; the first row used to win), and a `**Review:**` line, when present, must say `clean` or `findings-fixed` (`review-pending-rejected`; the line was read by no script). `agents/worker.md` re-runs every eval after the last fix instead of "the failing evals and their neighbours". Remains, all of roadmap (c): results are still a table the gated agent writes, not a record tied to a tree id and written by the tester; a `results.md` without a Review line still passes; `findings-fixed` is still undefined; the tester reuses whatever answers on its port; the merger runs lint and build only, not the evals on the merged tree.
 
 - **Severity:** high. **Effort:** L. **Roadmap:** section (c); v0.5.0 steps 4 and 7.
 - **Evidence:** `scripts/check-evals.sh:59-66` accepts a `pass` cell and any non-empty file.
@@ -95,6 +110,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### C-04 Gates fail open and trust inputs the gated agent wrote
 
+- **Status: partially fixed.** Done (v0.4.1 items 4-6 in part): the worker gate finds the ticket folder by ticket number in the worker's own worktree and no longer reads `dir` (`worker-gate-foreign-dir`); every hook reports hook JSON that does not parse, and the first-time-user's call is then denied (`gate-bad-json-says-so`, `ftu-bad-json-denied`); the launcher checks the cached binary against the checksum on every run (`native-cache-tampered`); the eval gate says in a `systemMessage`, not on stderr, that it cannot run. Remains: the launcher's version check and local-build rule (`native-version-mismatch`, `native-stale-local-build`: they need an `--expect-version` flag in sa-core); with sa-core missing every hook still allows everything, the first-time-user block included, because `tests/run.sh` ("a hook never blocks because sa-core is missing") and `README.md:10` assert exactly that; transitions failing closed in sa-core (v0.5.0 step 5).
+
 - **Severity:** high. **Effort:** S now, M for the full table. **Roadmap:** section (h) and (a);
   v0.4.1 items 4, 5, 6; v0.5.0 step 5.
 - **Evidence:** every hook exits 0 when sa-core is missing (`eval-gate.sh:8`, `worker-gate.sh:7`,
@@ -115,6 +132,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### C-05 Workers start from the remote's default branch, not from the integration branch
 
+- **Status: fixed.** `scripts/superagent.sh` starts the router with `--settings '{"worktree":{"baseRef":"head"}}'`; `agents/worker.md` step 1 stops with `blocked: ticket folder is missing` when its worktree lacks the ticket. Test: `launch-sets-worktree-base` plus a static guard. Not verified: the real worker in a repository with a remote, and what the CLI does when the user passes a second `--settings`.
+
 - **Severity:** high (in any cloned repository the parallel flow does not work as documented).
   **Effort:** S. **Roadmap:** section (b) "Changed after testing"; v0.4.1 item 2.
 - **Evidence:** `scripts/superagent.sh:22` passes no `worktree.baseRef` setting.
@@ -131,6 +150,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### C-06 The Stop gate spends its three blocks while subagents are still running
 
+- **Status: fixed.** `scripts/eval-gate.sh` allows a stop silently, without counting a block, while the payload's `background_tasks` lists a task that is running (or has no status); `skills/review-loop/SKILL.md` asks for foreground subagents. Tests: `gate-allows-while-subagent-runs`, `gate-blocks-when-no-task-runs`. Not verified: the entries' real shape (the evidence recorded only the key and a count), so the test payloads are an assumption.
+
 - **Severity:** high. **Effort:** S. **Roadmap:** section (b) "Seen live"; v0.4.1 item 3.
 - **Evidence:** `scripts/eval-gate.sh:21-30` has no notion of a running subagent.
   `docs/design/evidence/live/run5-review-loop/timeline.txt`: three blocks in the first 12 seconds,
@@ -143,6 +164,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 - **Verify:** roadmap tests `gate-allows-while-subagent-runs`, `gate-blocks-when-no-task-runs`.
 
 ### C-07 Team mode bypasses isolation, the gate and the merge path
+
+- **Status: skipped.** Conflicts with a user decision: the user just enabled agent teams, so team mode is not cut. Its gaps (teammates are not gated, work is uncommitted in the main checkout, a building team ticket holds every merge) remain as documented.
 
 - **Severity:** medium. **Effort:** M. **Roadmap:** section (f); v0.6.0 item 2; open decision 1.
 - **Evidence:** teammates work uncommitted in the main checkout (`agents/teammate.md:9,14`) and are
@@ -159,6 +182,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### C-08 Runtime status lives in tracked files that workers write in the main checkout
 
+- **Status: partially fixed.** First step only: `board set` replaces `RD.md` and `.evals.sha256` through a temp file and a rename (`core/src/board.rs` `write_atomic`), so a reader without a lock no longer sees an empty or half-written file. Probed before the fix: 1,796 torn reads of `RD.md` during 300 status changes; test `a_reader_never_sees_a_half_written_rd_md` (Unix only; the Windows rename path, with its retry and fallback to a plain write, is not verified). Remains: `BOARD.md` is still rewritten in place (an atomic replace needs a lock file separate from the board, which belongs with `state.lock`); `building` is still written to tracked files in the main checkout, so the merger keeps its `specs/tickets` special cases; no `state.json`, no `board migrate`.
+
 - **Severity:** medium. **Effort:** M. **Roadmap:** section (g); v0.5.0 step 1.
 - **Evidence:** `agents/worker.md:15` runs `board set NNN building`, which resolves to the main
   checkout (`core/src/main.rs:100-104`), against `worker.md:32` "never touch the main checkout".
@@ -174,6 +199,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 - **Verify:** roadmap test `core/tests/state_concurrency.rs`.
 
 ### C-09 Recovery paths contradict each other or do not exist
+
+- **Status: partially fixed.** Done (v0.4.1 item 8): `agents/merger.md` step 0 finds and aborts a leftover `MERGE_HEAD` (`merge-head-recovery`); `scripts/watchdog-loop.sh` compares the problems with their minute counts masked, so a persisting problem is reported once (`watchdog-persisting-problem-silent`). The problem text itself is unchanged (no `kind :: details` form, no `renotify_min`). Remains: the restart instruction in `agents/router.md` ("continues in the existing worktree") still contradicts `isolation: worktree`, because the roadmap's replacement needs the branch recorded per ticket (`state.json`); one heartbeat per worktree; no notion of a flaky eval.
 
 - **Severity:** medium. **Effort:** S for the v0.4.1 parts, M overall. **Roadmap:** section (g);
   v0.4.1 item 8; v0.5.0 step 7; v0.6.0 item 3.
@@ -194,6 +221,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### C-10 Agents have more power than their roles need
 
+- **Status: partially fixed.** Done (v0.4.1 item 7): `agents/reviewer.md` and `agents/builder.md` have `tools:` allowlists (no Agent, web tools or MCP connectors; the reviewer keeps the browser tools and has no Edit or Write), no agent uses `disallowedTools`, and the checker is no longer described as read-only. Guard in `tests/run.sh`. Behaviour change: reviewer and builder lose the tools named above. Remains: the watchdog keeps Edit (dropping it needs a `watchdog set` command), the merger gets no Agent tool yet, and the PreToolUse deny rules are v0.5.0 step 6.
+
 - **Severity:** medium. **Effort:** S. **Roadmap:** section (d); v0.4.1 item 7; v0.5.0 step 6.
 - **Evidence:** `agents/reviewer.md:4` is a three-tool denylist; `agents/builder.md:1-5` has no
   `tools` line; both run under the session's permissions and, in the parallel flow,
@@ -207,6 +236,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
   `disallowedTools`.
 
 ### C-11 Duplicated mechanisms and drift inside the plugin
+
+- **Status: partially fixed.** Done (v0.4.1 item 9): `scripts/init-project.sh` ignores only the plugin's own files under `specs/<name>/` instead of `specs/*`, and replaces the two legacy lines (`init-specs-own-files-tracked`, `init-legacy-ignore-removed`). One loop rule was aligned by hand: the worker now re-runs every eval after a fix, like the review-loop (C-03). Remains: the three loop definitions are still three prompts (no `templates/loop.md`; round limits 5, 3 and 3); the 140-line first-time-user shell parser; byte compatibility with the deleted Python in `core/src/hookio.rs` and `core/src/board.rs`.
 
 - **Severity:** low to medium. **Effort:** M. **Roadmap:** section (e) and (h); v0.4.1 items 6
   and 9; v0.6.0 items 1, 4 and 6.
@@ -284,6 +315,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### N-02 `RD.md` is approved by the user but not fingerprinted
 
+- **Status: fixed.** `board set <X> ready` writes a second line to `.evals.sha256` (`<hex>  RD.md`): sha256 of `RD.md` with CRLF read as LF and the first `**Status:**` line removed (`core/src/board.rs` `fingerprint_rd`, `sa-core fingerprint-rd`). `scripts/check-evals.sh --passed` compares it and fails with "RD.md changed after the user approved it"; a one-line file from an older version still passes. `classify-risk` writes the Risk line only while the status is `draft`. Tests: `core/tests/board_set.rs`, `eval-rd-tampered`, `eval-rd-status-change-ok`, `eval-rd-one-line-fingerprint`. Both lines are written when a draft is approved, not on a later `ready` (C-02).
+
 - **Severity:** medium. **Effort:** S to M. **Roadmap:** not covered (roadmap (d) rule 1 denies
   Edit/Write on `RD.md`, which it states is a convenience that matched nothing live).
 - **Evidence:** `core/src/board.rs:273-278` fingerprints `evals.md` only. `README.md:89` and
@@ -321,7 +354,7 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### N-03 The worker gate matches one exact agent name
 
-- **Status: contested, not fixed.** `tests/run.sh` (the `#7` comment above `wgate-bare-worker`) deliberately asserts that a bare `worker` is NOT gated. The regex fix below would break that test; decide first, or fix N-04 instead.
+- **Status: skipped.** Conflicts with a user decision: `tests/run.sh` (the `#7` comment above `wgate-bare-worker`) deliberately asserts that a bare `worker` and another plugin's `worker` are NOT gated, and the `.claude/agents` copies stay (N-04). The tension is real: a worker started from the project copy as `worker` is not gated. Near-miss names are now tested (`wgate-coworker`, `wgate-teammate`; N-11).
 
 - **Severity:** medium. **Effort:** S. **Roadmap:** not covered (the roadmap keeps the
   `super-agents:worker` literal).
@@ -345,6 +378,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 - **Verify:** `bash tests/run.sh`; rerun the probe and expect a block for both names.
 
 ### N-04 `.claude/agents` and `.claude/skills` duplicate the plugin and shadow its names
+
+- **Status: skipped.** Conflicts with a user decision: the user asked for the `.claude/agents` and `.claude/skills` copies. Drift, the one part that can be closed without deleting them, is now guarded: `tests/run.sh` fails when a copy differs from its plugin file (the `model:` lines of `router.md` and `watchdog.md` excepted). Shadowing (each agent offered twice) remains.
 
 - **Severity:** medium. **Effort:** S. **Roadmap:** not covered (added after it, commit `aab1bdc`).
 - **Evidence:** `diff -r agents .claude/agents` reports only `general-purpose.md` as extra;
@@ -390,6 +425,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### N-05 A worker that stops to ask the user is blocked by its own gate
 
+- **Status: fixed.** New heartbeat phase `waiting` (`scripts/job-status.sh`): `scripts/worker-gate.sh` lets that stop through before the block counter, `core/src/scan.rs` reports `PROBLEM NNN <who> waits for the user: <question>` instead of "silent", and `agents/worker.md` asks through it instead of `SendMessage`, which it does not have. Tests: `wgate-waiting-phase`, `scan-waiting-for-user`, `core/tests/board_scan.rs`. Not done: step 6 (`job await` in v0.5.0). Not verified live: that the router resumes the worker with the answer.
+
 - **Severity:** medium. **Effort:** S. **Roadmap:** partly (roadmap (b) gives sessions
   `loop await`; for workers it offers only `job blocked`, so the same gap remains in v0.5.0).
 - **Evidence:** `agents/worker.md:35`: "`SendMessage` to `main` ... then end your turn saying you
@@ -433,6 +470,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
   `super-agents job-status waiting "q"` and expect no output, exit 0, and no `.job/gate_blocks`.
 
 ### N-06 The router is a single point of failure and its state exists only in its context
+
+- **Status: partially fixed.** First step only, prompts with a static guard: the checker records its verdict and the checked commit in `.super-agents/checks/NNN.txt`; the router's "On start" classifies tickets from the board, that file and the heartbeats (`done` without `CONFIRMED OK` = start the checker; `building` with heartbeat phase `done` = acceptance read, then merger), and "Finish" requires the file for every ticket. Doc correction: the location below (`specs/tickets/NNN-*/evidence/check.txt`) was wrong. Probed: an untracked file there survives `super-agents drop-specs` and leaves an untracked `specs/` in the branch, or is swept into `commit-tickets`. `merge.txt` (step 2) was not added: nothing in step 3 reads it. Remains: rounds per ticket, the merge queue, standing approval and the watchdog id still live only in the router's context; `drop-specs` does not check the verdicts itself. Not verified: any of this with a real router, and whether its Glob sees git-ignored `.job/` files.
 
 - **Severity:** medium. **Effort:** M. **Roadmap:** partly (v0.5.0 step 1 `state.json` records
   status, worktree and branch; v0.6.0 item 1 moves round counting into the worker; the merge queue
@@ -481,6 +520,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### N-07 The checker shares the main checkout with the next merge; two reproducers share a port
 
+- **Status: fixed.** `agents/router.md` "When work comes back" step 3 makes a merge, its check and any reproducer fix one queue slot and allows one reproducer at a time; static guard in `tests/run.sh`. Prompt rule only: not run live.
+
 - **Severity:** medium. **Effort:** S. **Roadmap:** not covered.
 - **Evidence:** `agents/router.md:48` serialises mergers ("Only one merger runs at a time") and
   holds merges and the checker only for a building team ticket. `router.md:49` starts the checker
@@ -511,6 +552,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
   a checker's start and stop.
 
 ### N-08 Model, effort and turn limits are set without a stated rule or a cost ceiling
+
+- **Status: partially fixed.** Done (steps 1-3 and 6): `maxTurns` on builder 150, tester 80, reviewer 80, merger 60, checker 80, teammate 200; `effort: high` set explicitly on merger and reviewer; `first-time-user` pinned to `sonnet`; `README.md` has a table of model, effort, turn limit and why, which `tests/run.sh` compares with the frontmatter; the router's plan shows the total agent runs. The limits are ceilings picked above the one measured toy run, not tuned. The evidence table above is out of date: the router now runs on `claude-fable-5-2` (commit `c94bb67`). Remains: step 4 (cost per agent type in a live smoke) and step 5 (model changes decided from it); no budget ceiling.
 
 - **Severity:** medium (cost), low (correctness). **Effort:** S for limits, M to measure.
   **Roadmap:** not covered (roadmap v0.5.0 item 8 records one data point: a one-round loop cost
@@ -589,6 +632,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### N-09 A release is not tied to the source its binaries were built from
 
+- **Status: fixed.** `release.yml` `publish` fetches full history and refuses to publish when `core/` at the tag differs from the draft's `targetCommitish`; it also asks the released Linux binary for its version; the `test` job runs `cargo test --locked`; `ci.yml` pins the same `RUST_TOOLCHAIN` as `build-core.yml`; `build-core.yml` moves an existing draft's target to the commit it builds from (without that a re-run from another ref would leave a stale target). Static guards in `tests/run.sh`. Doc correction: the diff does not exclude `core/Cargo.lock` as written below, because a changed lock file changes the dependencies that are built in. Not verified: no workflow was run (no throwaway tag in a fork).
+
 - **Severity:** low to medium. **Effort:** S. **Roadmap:** not covered (the review calls the
   supply chain sound, `design-review.md:30`; that holds for binary-to-checksum, not source-to-binary).
 - **Evidence:** `build-core.yml` builds from whatever ref is dispatched and records it as the draft
@@ -624,6 +669,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
   to main, `README.md:123`); whether v0.4.0 was published was not checked.
 
 ### N-10 Portability: what is supported is narrower and vaguer than the code suggests
+
+- **Status: partially fixed.** Done: `README.md` "Install" has a platform table (item 1, with the macOS 12.3 minimum of item 3); `scripts/session-start.sh` passes on the launcher's reason, which names the platform (item 2, `session-names-platform`); the checker refuses a port something else already serves and replies `PORT IN USE` (item 4, checker half). Remains: the tester half of item 4 (it still uses whatever answers on its port; changing that alone would stall a review-loop whose builder left a server running, so it goes with roadmap (c)); item 5, the hook's per-call time on Windows, was not measured. The `readlink -f` claim for macOS before 12.3 is still untested.
 
 - **Severity:** low. **Effort:** S. **Roadmap:** not covered (the roadmap notes everything was
   observed on Linux only, `design-changes.md:720`).
@@ -668,6 +715,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
   timing for item 5.
 
 ### N-11 Test gaps that would have caught issues in this register
+
+- **Status: partially fixed.** Added to `tests/run.sh`: prompt tool names against each `tools:` list (it caught `SendMessage` in `agents/teammate.md`, now on its list; whether the agent-teams harness would have supplied it anyway is not verified); frontmatter keys and values; the `.claude` copies compared with the plugin (a drift guard, since N-04 keeps them); the N-01 merger fixture; un-namespaced and near-miss `agent_type` names for both hooks; a fixture with a remote for `commit-tickets` and `drop-specs`, plus `launch-sets-worktree-base`; the released binary asked for its version in `release.yml` (N-09). Remains: model-run evals still cover 2 of 8 skills and no agent (they cost money and were not run or extended).
 
 - **Severity:** low to medium. **Effort:** S each. **Roadmap:** partly (its test lists cover C-01
   to C-11; the items below are additional).
@@ -729,28 +778,28 @@ roadmap; unmarked items are additions to the named release.
 
 | ID | Issue | Severity | Effort | Status | Roadmap |
 |---|---|---|---|---|---|
-| C-01 | Shell arithmetic and prompt text from repo content | high | S | open | v0.4.1 item 1 |
-| C-02 | `done` not gated; agent owns releases; re-fingerprint | high | M | open | v0.5.0 steps 3, 5 |
-| C-03 | Evidence not bound to code; self-certified results; first row wins | high | L | open | v0.5.0 steps 4, 7 |
-| C-04 | Gates fail open; trust agent-written `dir`; launcher | high | S-M | open | v0.4.1 items 4-6; v0.5.0 step 5 |
-| C-05 | Worktrees start from the remote default branch | high | S | open | v0.4.1 item 2 |
-| C-06 | Stop gate spends its blocks on waits | high | S | open | v0.4.1 item 3 |
-| C-07 | Team mode bypasses isolation and the gate | medium | M | open | v0.6.0 item 2 |
-| C-08 | Runtime status in tracked files in the main checkout | medium | M | open | v0.5.0 step 1 |
-| C-09 | Recovery contradictions; watchdog repeats; `MERGE_HEAD` | medium | S-M | open | v0.4.1 item 8; v0.5.0; v0.6.0 |
-| C-10 | Over-powered reviewer, builder, watchdog, checker | medium | S | open | v0.4.1 item 7; v0.5.0 step 6 |
-| C-11 | Three loops; shell parser; Python compatibility; `specs/*` | low-medium | M | open | v0.4.1 item 9; v0.6.0 |
-| N-01 | Branch may change other tickets' evals and `review.md` | high | S | new, probed | not covered |
-| N-02 | `RD.md` approved but not fingerprinted | medium | S-M | new, probed | not covered |
-| N-03 | Worker gate matches one exact agent name | medium | S | new, probed | not covered |
-| N-04 | `.claude` copies duplicate and shadow the plugin | medium | S | new, observed | not covered |
-| N-05 | Worker that asks the user is blocked; no `SendMessage` | medium | S | new, probed | partly (b) |
-| N-06 | Router single point of failure; state in context only | medium | M | new, read | partly (g), (e) |
-| N-07 | Checker races the next merge; reproducers share a port | medium | S | new, read | not covered |
-| N-08 | Models, effort, turn limits without a rule or ceiling | medium | S-M | new, read | not covered |
-| N-09 | Release not tied to the source of its binaries | low-medium | S | new, read | not covered |
-| N-10 | Portability: Windows status, platforms, ports, `readlink` | low | S | new, partly unverified | not covered |
-| N-11 | Test gaps (tool lists, frontmatter, remotes, released binary) | low-medium | S | new | partly |
+| C-01 | Shell arithmetic and prompt text from repo content | high | S | fixed | v0.4.1 item 1 |
+| C-02 | `done` not gated; agent owns releases; re-fingerprint | high | M | partially fixed | v0.5.0 steps 3, 5 |
+| C-03 | Evidence not bound to code; self-certified results; first row wins | high | L | partially fixed | v0.5.0 steps 4, 7 |
+| C-04 | Gates fail open; trust agent-written `dir`; launcher | high | S-M | partially fixed | v0.4.1 items 4-6; v0.5.0 step 5 |
+| C-05 | Worktrees start from the remote default branch | high | S | fixed | v0.4.1 item 2 |
+| C-06 | Stop gate spends its blocks on waits | high | S | fixed | v0.4.1 item 3 |
+| C-07 | Team mode bypasses isolation and the gate | medium | M | skipped | v0.6.0 item 2 |
+| C-08 | Runtime status in tracked files in the main checkout | medium | M | partially fixed | v0.5.0 step 1 |
+| C-09 | Recovery contradictions; watchdog repeats; `MERGE_HEAD` | medium | S-M | partially fixed | v0.4.1 item 8; v0.5.0; v0.6.0 |
+| C-10 | Over-powered reviewer, builder, watchdog, checker | medium | S | partially fixed | v0.4.1 item 7; v0.5.0 step 6 |
+| C-11 | Three loops; shell parser; Python compatibility; `specs/*` | low-medium | M | partially fixed | v0.4.1 item 9; v0.6.0 |
+| N-01 | Branch may change other tickets' evals and `review.md` | high | S | fixed | not covered |
+| N-02 | `RD.md` approved but not fingerprinted | medium | S-M | fixed | not covered |
+| N-03 | Worker gate matches one exact agent name | medium | S | skipped | not covered |
+| N-04 | `.claude` copies duplicate and shadow the plugin | medium | S | skipped | not covered |
+| N-05 | Worker that asks the user is blocked; no `SendMessage` | medium | S | fixed | partly (b) |
+| N-06 | Router single point of failure; state in context only | medium | M | partially fixed | partly (g), (e) |
+| N-07 | Checker races the next merge; reproducers share a port | medium | S | fixed | not covered |
+| N-08 | Models, effort, turn limits without a rule or ceiling | medium | S-M | partially fixed | not covered |
+| N-09 | Release not tied to the source of its binaries | low-medium | S | fixed | not covered |
+| N-10 | Portability: Windows status, platforms, ports, `readlink` | low | S | partially fixed | not covered |
+| N-11 | Test gaps (tool lists, frontmatter, remotes, released binary) | low-medium | S | partially fixed | partly |
 
 22 issues: 11 carried over (6 high, 4 medium, 1 low-medium) and 11 new (1 high, 7 medium,
 2 low-medium, 1 low).
