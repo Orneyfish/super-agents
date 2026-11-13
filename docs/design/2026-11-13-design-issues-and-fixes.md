@@ -97,6 +97,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### C-04 Gates fail open and trust inputs the gated agent wrote
 
+- **Status: partially fixed.** Done (v0.4.1 items 4-6 in part): the worker gate finds the ticket folder by ticket number in the worker's own worktree and no longer reads `dir` (`worker-gate-foreign-dir`); every hook reports hook JSON that does not parse, and the first-time-user's call is then denied (`gate-bad-json-says-so`, `ftu-bad-json-denied`); the launcher checks the cached binary against the checksum on every run (`native-cache-tampered`); the eval gate says in a `systemMessage`, not on stderr, that it cannot run. Remains: the launcher's version check and local-build rule (`native-version-mismatch`, `native-stale-local-build`: they need an `--expect-version` flag in sa-core); with sa-core missing every hook still allows everything, the first-time-user block included, because `tests/run.sh` ("a hook never blocks because sa-core is missing") and `README.md:10` assert exactly that; transitions failing closed in sa-core (v0.5.0 step 5).
+
 - **Severity:** high. **Effort:** S now, M for the full table. **Roadmap:** section (h) and (a);
   v0.4.1 items 4, 5, 6; v0.5.0 step 5.
 - **Evidence:** every hook exits 0 when sa-core is missing (`eval-gate.sh:8`, `worker-gate.sh:7`,
@@ -746,7 +748,7 @@ roadmap; unmarked items are additions to the named release.
 | C-01 | Shell arithmetic and prompt text from repo content | high | S | fixed | v0.4.1 item 1 |
 | C-02 | `done` not gated; agent owns releases; re-fingerprint | high | M | open | v0.5.0 steps 3, 5 |
 | C-03 | Evidence not bound to code; self-certified results; first row wins | high | L | open | v0.5.0 steps 4, 7 |
-| C-04 | Gates fail open; trust agent-written `dir`; launcher | high | S-M | open | v0.4.1 items 4-6; v0.5.0 step 5 |
+| C-04 | Gates fail open; trust agent-written `dir`; launcher | high | S-M | partially fixed | v0.4.1 items 4-6; v0.5.0 step 5 |
 | C-05 | Worktrees start from the remote default branch | high | S | fixed | v0.4.1 item 2 |
 | C-06 | Stop gate spends its blocks on waits | high | S | fixed | v0.4.1 item 3 |
 | C-07 | Team mode bypasses isolation and the gate | medium | M | skipped | v0.6.0 item 2 |

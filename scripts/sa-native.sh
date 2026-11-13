@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # sa-native.sh <args>: run sa-core, the plugin's native helper, for this machine.
 # Order: $SUPER_AGENTS_CORE, a local build (core/target/release), then a cached copy of the release
-# asset for this plugin version, downloaded once and checked against dist/checksums/v<version>.txt.
+# asset for this plugin version, downloaded once and checked against dist/checksums/v<version>.txt on every run.
 # A download whose sha256 does not match is deleted and never run. Without a usable binary it exits 3,
 # never 2: Claude Code reads exit 2 from a hook as "block", and a missing helper must not block anything.
 root="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
@@ -20,9 +20,14 @@ build="cargo build --release --locked --manifest-path $root/core/Cargo.toml"
 
 ver=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$root/.claude-plugin/plugin.json" | head -1)
 name="sa-core-$t$x"; dir="${XDG_CACHE_HOME:-$HOME/.cache}/super-agents/$ver"; bin="$dir/$name"
+want=$(awk -v f="$name" '$2 == f || $2 == "*" f { print $1 }' "$root/dist/checksums/v$ver.txt" 2>/dev/null)
+[ -n "$want" ] || { echo "super-agents: no checksum for $name in dist/checksums/v$ver.txt; build it with: $build" >&2; exit 3; }
+sum() { { sha256sum "$1" 2>/dev/null || shasum -a 256 "$1"; } | awk '{print $1}'; }
+# the cache is as writable as any other file: it is checked on every run, not only after the download
+if [ -x "$bin" ] && [ "$(sum "$bin")" != "$want" ]; then
+  echo "super-agents: the cached $bin does not match dist/checksums/v$ver.txt; deleted, downloading it again" >&2; rm -f "$bin"
+fi
 if [ ! -x "$bin" ]; then
-  want=$(awk -v f="$name" '$2 == f || $2 == "*" f { print $1 }' "$root/dist/checksums/v$ver.txt" 2>/dev/null)
-  [ -n "$want" ] || { echo "super-agents: no checksum for $name in dist/checksums/v$ver.txt; build it with: $build" >&2; exit 3; }
   url="${SUPER_AGENTS_CORE_URL:-https://github.com/Orneyfish/super-agents/releases/download/v$ver}/$name"
   mkdir -p "$dir" || exit 3
   # Hooks run this on every tool call or stop, so a failed download must not be paid for again and again: it is not retried for
@@ -37,7 +42,7 @@ if [ ! -x "$bin" ]; then
   if ! curl -fsSL --retry 1 --connect-timeout 5 --max-time "${SUPER_AGENTS_CORE_TIMEOUT:-20}" -o "$tmp" "$url"; then
     rm -f "$tmp"; touch "$failed"; echo "super-agents: could not download $url; build it with: $build" >&2; exit 3
   fi
-  got=$( { sha256sum "$tmp" 2>/dev/null || shasum -a 256 "$tmp"; } | awk '{print $1}')
+  got=$(sum "$tmp")
   if [ "$got" != "$want" ]; then
     rm -f "$tmp"; touch "$failed"; echo "super-agents: checksum mismatch for $url (got $got, want $want); not running it" >&2; exit 3
   fi

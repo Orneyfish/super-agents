@@ -190,7 +190,8 @@ if [ -L $st ]; then gate; has gate-symlink-state-ignored "tracked by git or a sy
 sedi 's/| E2 | fail |/| E2 | pass |/' $D/results.md; rm -rf .super-agents
 
 # ---- job-status.sh + worker-gate.sh (SubagentStop)
-W=$T/wt; mkdir -p $W; cd $W || exit
+# C-04: the gate checks the ticket folder of the worker's own worktree, found by ticket number; W stands in for that worktree
+W=$T/wt; mkdir -p $W/$D; git init -q $W; cp -R $T/repo/$D/. $W/$D/; cd $W || exit
 t job-init 0 $X/job-status.sh init 001 "$T/repo/$D" building; [ "$(jget phase < .job/status.json)" = building ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL job-init"; }
 # PR review: a worker restarted in an old worktree starts with a fresh block count
 echo 3 > .job/gate_blocks; $X/job-status.sh init 001 "$T/repo/$D" building; [ ! -f .job/gate_blocks ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL init kept the old gate_blocks"; }
@@ -198,7 +199,7 @@ t job-update 0 $X/job-status.sh testing "note"; [ "$(jget phase < .job/status.js
 t job-team-file 0 $X/job-status.sh --name 001-a init 001 "$T/repo/$D" building; [ -f .job/status-001-a.json ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL job-team-file"; }
 wg() { LAST=$(echo "{\"cwd\":\"$W\",\"agent_type\":\"$1\"}" | $X/worker-gate.sh); }
 wg super-agents:builder; silent wgate-other-agent
-sedi 's/| E2 | pass |/| E2 | fail |/' $T/repo/$D/results.md
+sedi 's/| E2 | pass |/| E2 | fail |/' $W/$D/results.md
 wg super-agents:worker; has wgate-blocks '"decision": "block"'
 # C-01: .job/gate_blocks is never run as shell arithmetic either; garbage counts as 0
 printf 'x[$(touch %s/ARITH2)]\n' "$T" > .job/gate_blocks; wg super-agents:worker 2>/dev/null; has worker-gate-arith-injection '"decision": "block"'
@@ -216,17 +217,22 @@ grep -q 'job-status waiting' "$R/agents/worker.md" && pass=$((pass+1)) || { fail
 $X/job-status.sh building; echo 3 > .job/gate_blocks; wg super-agents:worker; has wgate-cap "released after 3 blocks"
 # M2: going back to building (a fix round) starts a fresh block count
 echo 2 > .job/gate_blocks; $X/job-status.sh building; [ ! -f .job/gate_blocks ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL building did not reset gate_blocks"; }
-sedi 's/| E2 | fail |/| E2 | pass |/' $T/repo/$D/results.md; wg super-agents:worker; silent wgate-passing
-# M2: init stores an absolute ticket dir; a relative one in status.json is resolved against the worker's cwd, not the hook's
-W3=$T/wt3; mkdir -p $W3/$D $W3/.job; cp -R $T/repo/$D/. $W3/$D/; sedi 's/| E2 | pass |/| E2 | fail |/' $W3/$D/results.md
+sedi 's/| E2 | fail |/| E2 | pass |/' $W/$D/results.md; wg super-agents:worker; silent wgate-passing
+# M2: init stores an absolute ticket dir
+W3=$T/wt3; mkdir -p $W3/$D $W3/.job; git init -q $W3; cp -R $T/repo/$D/. $W3/$D/; sedi 's/| E2 | pass |/| E2 | fail |/' $W3/$D/results.md
 (cd $W3 && $X/job-status.sh init 001 $D building); [[ $(jget dir < $W3/.job/status.json) =~ ^(/|[A-Za-z]:/) ]] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL job-status init kept a relative dir"; }
-sedi 's#"dir": "[^"]*"#"dir": "specs/tickets/001-found"#' $W3/.job/status.json
-cd $T/repo || exit; LAST=$(echo "{\"cwd\":\"$W3\",\"agent_type\":\"super-agents:worker\"}" | $X/worker-gate.sh); has wgate-relative-dir '"decision": "block"'
+# C-04: 'dir' in the status file is the worker's own text: pointing it at a folder that passes (here one outside the repo, with a fingerprint it wrote itself) changes nothing
+mkfix $T/foreign; fp $T/foreign; sedi "s#\"dir\": \"[^\"]*\"#\"dir\": \"$T/foreign\"#" $W3/.job/status.json
+cd $T/repo || exit; LAST=$(echo "{\"cwd\":\"$W3\",\"agent_type\":\"super-agents:worker\"}" | $X/worker-gate.sh); has worker-gate-foreign-dir '"decision": "block"'; has worker-gate-foreign-dir "E2 is not passing"
 # M2: a worker whose gate cannot run is told so
 LAST=$(echo "{\"cwd\":\"$T/np\",\"agent_type\":\"super-agents:worker\"}" | $X/worker-gate.sh); has wgate-skip-notice "worker gate skipped"
-# Windows: a native sa-core.exe stores a ticket dir as C:/... (MSYS rewrites /tmp/x for it); that is absolute, not relative to the worker's cwd
-W5=$T/wt5; mkdir -p $W5/.job; printf '{"ticket":"001","dir":"C:/nope/specs/tickets/001-x","phase":"building"}' > $W5/.job/status.json
-LAST=$(echo "{\"cwd\":\"$W5\",\"agent_type\":\"super-agents:worker\"}" | $X/worker-gate.sh); has wgate-drive-letter-dir "ticket dir C:/nope/specs/tickets/001-x does not exist"
+W5=$T/wt5; mkdir -p $W5/.job; git init -q $W5; printf '{"ticket":"001","dir":"C:/nope/specs/tickets/001-x","phase":"building"}' > $W5/.job/status.json
+LAST=$(echo "{\"cwd\":\"$W5\",\"agent_type\":\"super-agents:worker\"}" | $X/worker-gate.sh); has wgate-no-ticket-folder "no single ticket folder specs/tickets/001-*"
+# C-04: hook input that does not parse is reported, not read as "nothing to check"; the first-time-user's call is denied
+LAST=$(echo '{oops' | $X/eval-gate.sh 2>/dev/null); has gate-bad-json-says-so "hook input unreadable"
+LAST=$(echo '{oops "agent_type":"super-agents:worker"' | $X/worker-gate.sh 2>/dev/null); has worker-gate-bad-json-says-so "hook input unreadable"
+LAST=$(echo '{oops "agent_type":"super-agents:first-time-user","tool_name":"Bash"' | $X/block-code-reads.sh 2>/dev/null); has ftu-bad-json-denied '"permissionDecision": "deny"'
+LAST=$(echo '{oops "prompt":"start the first-time-user"' | $X/block-code-reads.sh 2>/dev/null); has ftu-bad-json-other-agent "hook input unreadable"; hasnt ftu-bad-json-other-agent '"permissionDecision": "deny"'
 cd $T/repo || exit
 
 # ---- board.py scan (watchdog)
@@ -560,6 +566,9 @@ printf '#!/bin/sh\necho "fake core $*"\n' > $T/srv/$asset
 ( cd $T/srv && { sha256sum "$asset" 2>/dev/null || shasum -a 256 "$asset"; } ) > $F/dist/checksums/v9.9.9.txt
 t native-fetch 0 fake --version;                                                  has native-fetch "fake core --version"
 [ -x "$T/cache/super-agents/9.9.9/$asset" ] && ok || bad "native-fetch did not cache $asset"
+# C-04: the cache is as writable as any file, so it is checked on every run: a changed binary is never run, it is replaced by a verified download
+echo 'echo TAMPERED' >> "$T/cache/super-agents/9.9.9/$asset"
+t native-cache-tampered 0 fake --version;                                         has native-cache-tampered "fake core --version"; hasnt native-cache-tampered "TAMPERED"; has native-cache-tampered-says-so "does not match"
 echo tampered >> $T/srv/$asset; rm -rf $T/cache
 t native-mismatch 3 fake --version;                                               has native-mismatch "checksum mismatch"; hasnt native-mismatch "fake core"
 # no Python left in the plugin: the board, the evals fingerprint and the hooks' JSON run on sa-core
@@ -568,7 +577,7 @@ if grep -rnE 'board\.py|hookio\.py|python3([^?]|$)' "$R"/agents "$R"/skills "$R"
 else ok; fi
 # a hook never blocks because sa-core is missing: with nothing to download it exits 0, says so, and blocks or
 # denies nothing. The same inputs block or deny when sa-core is there (the second half).
-cp "$X"/*.sh $F/scripts/; mkdir -p $T/empty .super-agents; rm -rf $T/cache; state; sedi 's/| E2 | pass |/| E2 | fail |/' $D/results.md
+cp "$X"/*.sh $F/scripts/; mkdir -p $T/empty .super-agents; rm -rf $T/cache; state; sedi 's/| E2 | pass |/| E2 | fail |/' $D/results.md; sedi 's/| E2 | pass |/| E2 | fail |/' $W/$D/results.md
 gate_in=("eval-gate" "{\"cwd\":\"$T/repo\",\"session_id\":\"S\"}" "worker-gate" "{\"cwd\":\"$W\",\"agent_type\":\"super-agents:worker\"}"
   "block-code-reads" "{\"cwd\":\"$T\",\"agent_type\":\"super-agents:first-time-user\",\"tool_name\":\"Read\",\"tool_input\":{}}" "session-start" "{\"cwd\":\"$T/repo\"}")
 for i in 0 2 4 6; do h=${gate_in[$i]}; j=${gate_in[$((i+1))]}
@@ -579,7 +588,7 @@ done
 LAST=$("$X/eval-gate.sh" <<<"${gate_in[1]}");        has eval-gate-with-core '"decision": "block"'
 LAST=$("$X/worker-gate.sh" <<<"${gate_in[3]}");      has worker-gate-with-core '"decision": "block"'
 LAST=$("$X/block-code-reads.sh" <<<"${gate_in[5]}"); has block-code-reads-with-core '"permissionDecision": "deny"'
-sedi 's/| E2 | fail |/| E2 | pass |/' $D/results.md; rm -rf .super-agents $W/.job/gate_blocks
+sedi 's/| E2 | fail |/| E2 | pass |/' $D/results.md; sedi 's/| E2 | fail |/| E2 | pass |/' $W/$D/results.md; rm -rf .super-agents $W/.job/gate_blocks
 # build-core.yml is about to be used for the first time: the default token is read-only, checkout stores no token where a dependency's
 # build script could read it, and a version that is already published is refused (a re-run would replace the live binaries)
 bc="$R/.github/workflows/build-core.yml"
