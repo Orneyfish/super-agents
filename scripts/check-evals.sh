@@ -97,10 +97,12 @@ if [ "$passed" = 1 ]; then
     if top=$(git -C "$d" rev-parse --show-toplevel 2>/dev/null); then
       topr=$(cd "$top" && pwd -P)
       for p in "${delivs[@]}"; do f="$top/$p"
-        [ -s "$f" ] || { fail "deliverable '$p' does not exist or is empty in $top"; continue; }
+        { [ -e "$f" ] || [ -L "$f" ]; } || { fail "deliverable '$p' does not exist or is empty in $top"; continue; }
         # a directory, a symlink, or a file reached through a symlinked folder is not work kept in this checkout
+        # (tested before -s: a directory has size 0 on Windows, so -s alone would call it "empty")
         dr=$(cd "$(dirname "$f")" 2>/dev/null && pwd -P)
-        { [ -f "$f" ] && [ ! -L "$f" ] && case "$dr/" in "$topr"/*) true;; *) false;; esac; } || fail "deliverable '$p' must be a regular file inside $top, not a directory or a symlink"
+        { [ -f "$f" ] && [ ! -L "$f" ] && case "$dr/" in "$topr"/*) true;; *) false;; esac; } || { fail "deliverable '$p' must be a regular file inside $top, not a directory or a symlink"; continue; }
+        [ -s "$f" ] || fail "deliverable '$p' does not exist or is empty in $top"
       done
     else fail "cannot check the deliverable: $d is not inside a git repository"; fi
   fi
