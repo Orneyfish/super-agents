@@ -13,6 +13,12 @@ Related documents, which this one does not repeat:
 
 This document describes the system **as it is in the code today**, not the target design.
 
+Updated 2026-11-13 on branch `fix/all-design-issues` for the fixes recorded in the issue register:
+the behaviour described below is the fixed behaviour. The `file:line` references were written
+against 0.3.1 and were not all re-derived; in the files those fixes touched (the four hook scripts,
+`check-evals.sh`, `sa-native.sh`, `init-project.sh`, `board.rs`, `scan.rs`, `main.rs`, the agent
+prompts) a line number can be off by a few lines.
+
 ## 1. What the system is
 
 A Claude Code plugin (`.claude-plugin/plugin.json`) made of prompts (skills and agents), four hooks,
@@ -27,7 +33,8 @@ There are two flows. Both start from a written spec (`RD.md` plus `evals.md`) th
 1. `/super-agents:write-eval <name>` writes `specs/<name>/RD.md`, `evals.md` and, for UI features,
    `mockup.html`. Status stays `draft` and nothing is built (`skills/write-eval/SKILL.md:12-22`).
 2. The user approves. `super-agents board set <dir> ready` sets the `**Status:**` line and writes
-   `.evals.sha256`, the fingerprint of `evals.md` (`core/src/board.rs:259-278`).
+   `.evals.sha256`: the fingerprint of `evals.md` and, on a second line, of `RD.md` without its
+   Status line (`core/src/board.rs`, `set_status`).
 3. `/super-agents:review-loop <name>` makes the session an orchestrator. Per round it starts a
    `builder`, then a `tester`, then a `reviewer` subagent, for at most 5 rounds
    (`skills/review-loop/SKILL.md:39-58`). All of them work in the user's checkout on `feat/<name>`.
@@ -40,7 +47,8 @@ There are two flows. Both start from a written spec (`RD.md` plus `evals.md`) th
 3. The user runs `superagent` in a terminal. `scripts/superagent.sh` offers an
    `integration/<timestamp>` branch when on main (`:8-13`), commits the tickets and project files
    (`:17`, `scripts/commit-tickets.sh`), and starts `claude --agent super-agents:router` in
-   `--permission-mode auto` with agent teams enabled for that process (`:21-22`).
+   `--permission-mode auto` with agent teams enabled for that process and the setting
+   `worktree.baseRef: "head"`, so worktrees are cut from the integration branch (`:21-24`).
 4. The router dispatches one `worker` per solo ticket (each in its own git worktree) or a team of
    `teammate` agents per team ticket, plus one background `watchdog` (`agents/router.md:39-43`).
 5. Each worker builds, has its own `tester` and `reviewer` check the work, writes `results.md` and
@@ -162,27 +170,28 @@ All frontmatter is at the top of `agents/<name>.md`. "Isolation" is the `isolati
 
 | Agent | Model, effort | Tools | Isolation | Started by | May write |
 |---|---|---|---|---|---|
-| `router` | opus, high | Read, Grep, Glob, Agent(8 named types), SendMessage, TaskStop, AskUserQuestion | none; it is the main thread | `scripts/superagent.sh:22` | Nothing: it has no write or shell tool (`router.md:4`). |
+| `router` | claude-fable-5-2, high | Read, Grep, Glob, Agent(8 named types), SendMessage, TaskStop, AskUserQuestion | none; it is the main thread | `scripts/superagent.sh:22` | Nothing: it has no write or shell tool (`router.md:4`). |
 | `worker` | sonnet, high; maxTurns 200 | Read, Grep, Glob, Bash, Edit, Write, Agent, Monitor, TodoWrite | `worktree` | router, one per solo ticket, unnamed (`router.md:42`) | Source in its worktree; `TICKET_DIR/results.md`, `evidence/`; `.job/`; commits on its branch. Through `board set` it also changes `BOARD.md` and `RD.md` in the **main checkout** (`worker.md:15`). |
-| `teammate` | sonnet, high | same as worker | none; main checkout | router, as an agent team named `NNN-<area>` (`router.md:43`) | Files it owns per `contract.md`; `.job/status-<name>.json`; the last-named one writes `results.md`. Never commits (`teammate.md:14`). |
-| `merger` | sonnet | Read, Grep, Glob, Bash, Edit | none; main checkout | router, one at a time (`router.md:48`) | Merge commit, "mark done" commit, the `drop-specs` commit; removes merged worktrees (`merger.md:16-19`). |
-| `checker` | sonnet | Read, Grep, Glob, Bash, ToolSearch, `mcp__claude-in-chrome__*` | none; main checkout, port 3000 | router, after each merge (`router.md:49`) | Screenshots under the ticket's `evidence/`, by prompt rule only (`checker.md:8`). |
+| `teammate` | sonnet, high; maxTurns 200 | same as worker, plus SendMessage | none; main checkout | router, as an agent team named `NNN-<area>` (`router.md:43`) | Files it owns per `contract.md`; `.job/status-<name>.json`; the last-named one writes `results.md`. Never commits (`teammate.md:14`). |
+| `merger` | sonnet, high; maxTurns 60 | Read, Grep, Glob, Bash, Edit | none; main checkout | router, one at a time (`router.md:48`) | Merge commit, "mark done" commit, the `drop-specs` commit; removes merged worktrees (`merger.md:16-19`). |
+| `checker` | sonnet; maxTurns 80 | Read, Grep, Glob, Bash, ToolSearch, `mcp__claude-in-chrome__*` | none; main checkout, port 3000 (replies `PORT IN USE` if something else already serves it) | router, after each merge (`router.md:49`) | Screenshots under the ticket's `evidence/` and its verdict in `.super-agents/checks/NNN.txt`, by prompt rule only (`checker.md:8`). |
 | `reproducer` | sonnet, high; maxTurns 120 | Read, Grep, Glob, Bash, Edit, Write, ToolSearch, chrome tools | `worktree`, port 3090 | router, on a `BROKEN` check | A fix on branch `fix/<slug>` if small (`reproducer.md:15`). |
 | `watchdog` | sonnet, medium; maxTurns 400; autoCompactWindow 150000 | Read, Grep, Glob, Bash, Edit, Monitor, SendMessage, TaskStop | none | router, once, in the background (`router.md:41`) | `.super-agents/watchdog.conf` only (`watchdog.md:19`). |
-| `tester` | sonnet | Read, Grep, Glob, Bash, ToolSearch, chrome tools | none; its spawner's directory | review-loop, worker, team integrator | Files under `<dir>/evidence/` only (`tester.md:16`). It does not write `results.md`. |
-| `reviewer` | sonnet | everything except Edit, Write, NotebookEdit (`reviewer.md:4`) | none | review-loop, worker, team integrator | Nothing, by prompt; Bash is available. |
-| `builder` | sonnet | no `tools` line: every tool in the session | none; user's checkout | review-loop only | Source code; told not to edit the spec, results or state files (`builder.md:20`). |
-| `first-time-user` | inherit | Bash, ToolSearch, chrome tools | none | `first-time-user` skill | Nothing outside the app; the PreToolUse hook blocks code reads. |
+| `tester` | sonnet; maxTurns 80 | Read, Grep, Glob, Bash, ToolSearch, chrome tools | none; its spawner's directory | review-loop, worker, team integrator | Files under `<dir>/evidence/` only (`tester.md:16`). It does not write `results.md`. |
+| `reviewer` | sonnet, high; maxTurns 80 | Read, Grep, Glob, Bash, ToolSearch, chrome tools (`reviewer.md:4`) | none | review-loop, worker, team integrator | Nothing, by prompt; Bash is available. |
+| `builder` | sonnet; maxTurns 150 | Read, Grep, Glob, Bash, Edit, Write, TodoWrite | none; user's checkout | review-loop only | Source code; told not to edit the spec, results or state files (`builder.md:20`). |
+| `first-time-user` | sonnet | Bash, ToolSearch, chrome tools | none | `first-time-user` skill | Nothing outside the app; the PreToolUse hook blocks code reads. |
 
 Facts about the harness that these definitions depend on, as measured in
 `docs/design/2026-11-11-design-changes.md` (appendix B, Claude Code 2.1.322):
 
 - A subagent's `tools:` allowlist is enforced; `disallowedTools` leaves everything else, Bash included.
+  Every agent now has a `tools:` line and none uses `disallowedTools` (checked by `tests/run.sh`).
 - The `Agent(...)` list of a `--agent` main thread binds every descendant. That is why `tester` and
   `reviewer` are on the router's list although it never starts them (`router.md:21`).
 - A scoped `Agent(...)` list on an ordinary subagent is **not** enforced.
 - A worktree-isolated agent starts from the remote's default branch when the repository has a remote,
-  unless `worktree.baseRef` is `head`. `superagent.sh` does not set it today (issue C-05).
+  unless `worktree.baseRef` is `head`, which `superagent.sh` passes with `--settings` (issue C-05).
 
 ### 2.4 Hooks
 
@@ -190,10 +199,10 @@ Registered in `hooks/hooks.json`; active in every session while the plugin is en
 
 | Event | Script | Fires for | What it gates | Releases without checking when |
 |---|---|---|---|---|
-| SessionStart | `session-start.sh` | every session | Nothing. Adds the "done means proven" agreement, the session id, a setup nudge, and a note about an active loop or a board (`:7-17`). | n/a |
-| Stop | `eval-gate.sh` | every turn end of a main session | While `.super-agents/state.md` has `active: true`: blocks unless `check-evals.sh <dir> --passed` exits 0 (`:21`, `:30`). | no state file; file older than 12 h (`:11`); `active` not `true` (`:13`); `awaiting_user: true` (`:14`); invalid `dir` (`:15`); another session owns the loop (`:19`); 3 blocks already (`:25-26`); sa-core missing (`:8`). |
-| SubagentStop | `worker-gate.sh` | every subagent end | Only `agent_type` exactly `super-agents:worker` (`:8`): blocks unless `check-evals.sh <dir> --passed` exits 0, with `dir` read from the worker's own `.job/status.json` (`:10-14`). | no status file (`:10`); phase `blocked` (`:13`); 3 blocks (`:16`); sa-core missing (`:7`). |
-| PreToolUse | `block-code-reads.sh` | Read, Grep, Glob, Edit, Write, NotebookEdit, Bash, chrome tools (`hooks.json:14`) | Only an agent whose type ends in `first-time-user` (`:7`): denies every file tool, `file:` URLs in browser calls, and Bash commands matched by a regex denylist (`:27-30`, `:137-139`). | any other agent; sa-core missing (`:6`). |
+| SessionStart | `session-start.sh` | every session | Nothing. Adds the "done means proven" agreement, the session id, a setup nudge, and a note about an active loop or a board; `dir` and `round` from `state.md` are included only when they match their grammar. Without sa-core it says so and passes on the launcher's reason, which names the platform. | n/a |
+| Stop | `eval-gate.sh` | every turn end of a main session | While `.super-agents/state.md` has `active: true`: blocks unless `check-evals.sh <dir> --passed` exits 0 (`:21`, `:30`). | no state file; file older than 12 h; `active` not `true`; `awaiting_user: true`; `state.md` tracked by git or a symlink (says so); invalid `dir`; another session owns the loop; a task in the payload's `background_tasks` is still running (a wait, not counted as a block); 3 blocks already (`gate_blocks` is read as 1-3 digits, anything else as 0); hook JSON unreadable (says so); sa-core missing (says so in a `systemMessage`). |
+| SubagentStop | `worker-gate.sh` | every subagent end | Only `agent_type` exactly `super-agents:worker` (`:8`): blocks unless `check-evals.sh <dir> --passed` exits 0, where `<dir>` is the single `specs/tickets/NNN-*` folder in the worker's own worktree, found from the ticket number in `.job/status.json` (its `dir` field is not read). | no status file; status file tracked or a symlink; no single ticket folder; phase `blocked` or `waiting` (the worker stopped to ask the user); 3 blocks; hook JSON unreadable; sa-core missing. Each of these except the two phases says so. |
+| PreToolUse | `block-code-reads.sh` | Read, Grep, Glob, Edit, Write, NotebookEdit, Bash, chrome tools (`hooks.json:14`) | Only an agent whose type ends in `first-time-user` (`:7`): denies every file tool, `file:` URLs in browser calls, and Bash commands matched by a regex denylist (`:27-30`, `:137-139`). | any other agent; sa-core missing (`:6`). Hook JSON that does not parse is denied for the first-time-user and reported for anyone else. |
 
 All hook JSON is parsed and produced by `sa-core hookio` (`core/src/hookio.rs`), so the scripts need
 neither `jq` nor Python (`tests/run.sh:14` fails any script that calls them).
@@ -206,10 +215,11 @@ Source in `core/src/`; usage text at `core/src/main.rs:16-27`. Dependencies: `re
 | Subcommand | Module | Behaviour |
 |---|---|---|
 | `board check [root]` | `board.rs:156-236` | Validates `BOARD.md`: duplicate ids, status and mode words, `Runs` syntax, one folder per row, RD status equals board status, unknown dependencies, folders without a row, dependency cycles. Prints `OK:` or `FAIL:` lines. |
-| `board set <NNN or dir> <status> [root]` | `board.rs:243-285` | Rewrites the first `**Status:**` line of `RD.md`; on `ready` writes `.evals.sha256`; for a ticket folder rewrites the board row under an exclusive file lock (`:296-314`). Accepts any status from any status. |
-| `board scan [root]` | `scan.rs:31-93` | The watchdog's check: one `PROBLEM` line per building ticket with no heartbeat, a silent or blocked or slow worker, an unreadable status file, a dependency cycle, or `app_url` not answering. Limits come from `.super-agents/watchdog.conf` (`:32-37`). |
+| `board set <NNN or dir> <status> [root]` | `board.rs:243-285` | Rewrites the first `**Status:**` line of `RD.md`; on `ready` writes `.evals.sha256` (line 1 `evals.md`, line 2 `RD.md` without its Status line), but only when a draft is approved or no fingerprint exists yet, not when an already approved ticket is set `ready` again; `RD.md` and the fingerprint are replaced by temp file and rename; for a ticket folder rewrites the board row in place under an exclusive file lock. sa-core itself accepts any status from any status; `bin/super-agents board set <X> done` first runs `check-evals --passed` and refuses while it fails. |
+| `board scan [root]` | `scan.rs:31-93` | The watchdog's check: one `PROBLEM` line per building ticket with no heartbeat, a silent or blocked or slow worker, a worker waiting for the user's answer (phase `waiting`), an unreadable status file, a dependency cycle, or `app_url` not answering. Limits come from `.super-agents/watchdog.conf` (`:32-37`). |
 | `board root` | `gitroot.rs:13-49` | Prints the main checkout, also from inside a linked worktree or a submodule. `[root]` defaults to this for every board command (`main.rs:100-104`). |
-| `fingerprint <file>` | `board.rs:15-24` | sha256 hex with every CRLF read as LF. |
+| `fingerprint <file>` | `board.rs` | sha256 hex with every CRLF read as LF. |
+| `fingerprint-rd <RD.md>` | `board.rs` | The same, with the first `**Status:**` line left out. |
 | `hookio get <a.b.c>` | `hookio.rs:12-26` | One value from the JSON on stdin; empty for null or a missing path; exit 1 on a parse error (`main.rs:107-114`). |
 | `hookio emit <block, message, deny or context> <text>` | `hookio.rs:29-45` | The reply JSON for a hook. |
 | `hookio status-init`, `status-set` | `hookio.rs:48-73` | Heartbeat records for `job-status.sh`. |
@@ -225,13 +235,13 @@ heartbeat timestamps; `SA_CORE_NOW` pins the clock for tests (`isotime.rs:8-14`)
 | Command | Script | What it does |
 |---|---|---|
 | `check-evals <dir> [--ready] [--passed]` | `scripts/check-evals.sh` | The validator behind both done-gates; see section 4. |
-| `board ...`, `fingerprint` | `scripts/sa-native.sh` | Runs sa-core: `$SUPER_AGENTS_CORE`, else a local build in `core/target/release`, else the cached release asset, downloaded once and checked against `dist/checksums/v<version>.txt` (`:17-47`). Exit 3 means "no helper", never 2 (`:5-6`). |
+| `board ...`, `fingerprint` | `scripts/sa-native.sh` | Runs sa-core: `$SUPER_AGENTS_CORE`, else a local build in `core/target/release`, else the cached release asset, downloaded once and checked against `dist/checksums/v<version>.txt`, at download and again on every run (a cached copy that no longer matches is deleted and fetched again). Exit 3 means "no helper", never 2 (`:5-6`). |
 | `install-core` | same, with `SA_NATIVE_FORCE=1` | Downloads and verifies now (`bin/super-agents:10`). |
-| `job-status [--name N] init or <phase>` | `scripts/job-status.sh` | Writes the heartbeat file; resets `.job/gate_blocks` on `init` and `building` (`:15`). |
-| `setup [dir ...]` | `scripts/init-project.sh` | `review.md`, the block in `CLAUDE.md` (and `AGENTS.md` if present), `.gitignore` entries (`:11-35`). |
+| `job-status [--name N] init or <phase>` | `scripts/job-status.sh` | Writes the heartbeat file; resets `.job/gate_blocks` on `init` and `building`. `--name` must match `[A-Za-z0-9._-]{1,64}`. |
+| `setup [dir ...]` | `scripts/init-project.sh` | `review.md`, the block in `CLAUDE.md` (and `AGENTS.md` if present), `.gitignore` entries: run state and the plugin's own files under `specs/<name>/` (`RD.md`, `evals.md`, `.evals.sha256`, `results.md`, `mockup.html`, `evidence/`); the legacy `specs/*` and `!specs/tickets/` lines are removed. |
 | `commit-tickets [-y] [-q]` | `scripts/commit-tickets.sh` | Commits `specs/tickets`, `.gitignore`, `review.md`, `CLAUDE.md`, `AGENTS.md` only (`:11`, `:21`). Refuses on main. |
 | `drop-specs` | `scripts/drop-specs.sh` | Commits the removal of `specs/tickets/` once every ticket is `done` on the committed board (`:16-25`). |
-| `watchdog-loop` | `scripts/watchdog-loop.sh` | Runs `board scan` every `interval_min` (default 10) and prints when the output text changed (`:6-16`). |
+| `watchdog-loop` | `scripts/watchdog-loop.sh` | Runs `board scan` every `interval_min` (default 10) and prints when the set of problems changed; minute counts are masked for the comparison, so a persisting problem is printed once. |
 | `launch` | `scripts/superagent.sh` | Starts the router (section 1.2). |
 | `link-skills <dir>...` | inline | Symlinks `skills/*` into another harness's skills folder (`bin/super-agents:17-21`). |
 | `template <name>` | inline | Prints a file from `templates/` (`:22-23`). |
@@ -254,15 +264,16 @@ Everything is a file in the project. There is no daemon and no database.
 
 | Path | Tracked in git | Written by | Read by |
 |---|---|---|---|
-| `specs/<name>/RD.md`, `evals.md`, `mockup.html` | no (`init-project.sh:31` ignores `specs/*`) | write-eval; the user | builder, tester, reviewer, `check-evals.sh` |
+| `specs/<name>/RD.md`, `evals.md`, `mockup.html` | no (`init-project.sh` ignores these files under `specs/*/`) | write-eval; the user | builder, tester, reviewer, `check-evals.sh` |
 | `specs/tickets/NNN-slug/RD.md`, `evals.md`, `mockup.html` | yes, until `drop-specs` | write-tickets; the user | worker, teammate, tester, reviewer, router (main checkout copy, `router.md:46`), merger, checker |
 | `**Status:**` line in `RD.md` | as its file | `sa-core board set` only (`board.rs:259-270`), called by mark-ready, write-eval, review-loop, worker, first teammate, merger | `check-evals.sh:13-17`, `board check`, router |
-| `.evals.sha256` | as its folder | `board set ... ready` (`board.rs:274-278`) | `check-evals.sh:42-58`; merger step 2 |
+| `.evals.sha256` | as its folder | `board set ... ready`, when a draft is approved | `check-evals.sh --passed` (line 1 against `evals.md`, line 2 against `RD.md`); merger step 2 |
 | `specs/tickets/BOARD.md` | yes | write-tickets creates it; `board set` rewrites one status cell | router, `board check`, `board scan`, merger (`merger.md:14`), `drop-specs.sh:16` (the committed copy) |
 | `<dir>/results.md` | tickets: yes, on the worker's branch | review-loop orchestrator (`SKILL.md:42-51`); worker (`worker.md:21-31`); team integrator (`teammate.md:15`) | `check-evals.sh:59-66`, router, watchdog |
 | `<dir>/evidence/` | as above | tester (`tester.md:14`); checker screenshots | `check-evals.sh:65` (exists and is non-empty), router (Glob) |
 | `<dir>/contract.md` | team tickets | first-sorted teammate (`teammate.md:11`) | teammates, merger (`merger.md:18`) |
 | `.super-agents/state.md` | no | review-loop orchestrator, by hand; `eval-gate.sh:18` (session claim) and `:28` (`gate_blocks`) | `eval-gate.sh`, `session-start.sh:14-15` |
+| `.super-agents/checks/NNN.txt` | no | checker (verdict line, checked commit) | router, on start and before `drop specs` |
 | `.super-agents/watchdog.conf` | no | watchdog, with Edit | `scan.rs:152-165`, `watchdog-loop.sh:10` |
 | `.job/status.json` in a worktree | no | `job-status.sh` (worker) | `worker-gate.sh:10-13`, `scan.rs:177-187`, router (`router.md:27`), watchdog |
 | `.job/status-<name>.json` in the main checkout | no | `job-status.sh --name` (teammate) | `scan.rs:188-191`, router, watchdog |
@@ -271,20 +282,20 @@ Everything is a file in the project. There is no daemon and no database.
 | `${XDG_CACHE_HOME:-~/.cache}/super-agents/<version>/sa-core-<target>` | outside the repo | `sa-native.sh:22-45` | `sa-native.sh:47` |
 
 Status words are `draft`, `ready`, `building`, `done` (`board.rs:26`). Heartbeat phases are
-`building`, `testing`, `reviewing`, `done`, `blocked` (`job-status.sh:4`).
+`building`, `testing`, `reviewing`, `done`, `blocked`, `waiting` (`job-status.sh:4`).
 
 ### 3.1 How concurrent writers are kept apart
 
 | Mechanism | Where | What it covers | What it does not |
 |---|---|---|---|
 | One git worktree per solo worker and per reproducer | `isolation: worktree` in `worker.md:7`, `reproducer.md:7`; worktrees live in `.claude/worktrees/` | Source edits, `results.md`, `evidence/`, `.job/` of different tickets never share a directory. | Bash can still write outside the worktree (design-changes section g, run 8). |
-| Per-ticket port, account and data directory | `review.md` template `:31`; `write-tickets/SKILL.md:18`; `templates/evals.md:6` | Ticket `NNN` uses port `3100+NNN`, account `tNNN`, a `mktemp -d` data directory. Main checkout 3000, reproducer 3090. | Two reproducers at once share 3090; the checker shares the main checkout with the merger (issue N-07). |
-| Exclusive lock on `BOARD.md` | `board.rs:296-314` (`File::lock`) | Several `board set` calls flipping different rows; tested by `core/tests/board_set.rs:103`. | Readers take no lock and the file is rewritten in place. `RD.md` is written with no lock (`board.rs:270`). |
+| Per-ticket port, account and data directory | `review.md` template `:31`; `write-tickets/SKILL.md:18`; `templates/evals.md:6` | Ticket `NNN` uses port `3100+NNN`, account `tNNN`, a `mktemp -d` data directory. Main checkout 3000, reproducer 3090. | The router is told to run one reproducer at a time and to hold the next merge until the previous merge's check (and fix) is through (issue N-07); a prompt rule. |
+| Exclusive lock on `BOARD.md` | `board.rs:296-314` (`File::lock`) | Several `board set` calls flipping different rows; tested by `core/tests/board_set.rs:103`. | Readers take no lock and `BOARD.md` is rewritten in place. `RD.md` is written with no lock, but replaced atomically. |
 | One merger at a time | `router.md:48` (a prompt rule) | Serial merges into the integration branch. | Nothing mechanical enforces it. |
 | File ownership contract | `teammate.md:9-11`, `contract.md` | Teammates sharing the main checkout edit disjoint files. | A prompt rule over an LLM-written file. |
 | `session:` line in `state.md` | `eval-gate.sh:16-19` | Only the session that started a loop is gated by it. | One `state.md` per checkout: a second loop overwrites the first (`SKILL.md:21`). |
-| Write to a temp file, then `mv` | `job-status.sh:10,13`; `eval-gate.sh:28`; `sa-native.sh:35-44` | Heartbeat, `gate_blocks` and the downloaded binary are replaced atomically. | `BOARD.md`, `RD.md` and `.evals.sha256` are not. |
-| The router has no write tools | `router.md:4` | The agent that talks to the user cannot touch the tree. | Its state (queue, round counts) lives only in its context (issue N-06). |
+| Write to a temp file, then `mv` | `job-status.sh:10,13`; `eval-gate.sh:28`; `sa-native.sh:35-44` | Heartbeat, `gate_blocks` and the downloaded binary are replaced atomically. | `RD.md` and `.evals.sha256` are too (`board.rs` `write_atomic`); `BOARD.md` is not. |
+| The router has no write tools | `router.md:4` | The agent that talks to the user cannot touch the tree. | Its queue and round counts live only in its context; check verdicts are recovered from `.super-agents/checks/` (issue N-06). |
 
 Workers get a worktree of **committed** files only, which is why `superagent.sh:17` and
 `super-agents commit-tickets` exist (`router.md:40`).
@@ -299,7 +310,7 @@ One validator, `scripts/check-evals.sh`, in three strengths:
 |---|---|---|
 | `check-evals <dir>` | `RD.md` and `evals.md` exist; valid Status and Risk; at least one `FR-`/`NFR-` line; every requirement named in some eval's `covers:`; `mockup.html` when `UI: yes`; no `TODO` outside backticks; every `## E<n>` block has `covers`, `check`, `pass when`, `fail when`. | `:10-39` |
 | `--ready` | Also: Status is `ready`. | `:17` |
-| `--passed` | Also: `evals.md` matches `.evals.sha256` (a missing fingerprint fails); every eval id has a row in `results.md` whose result cell is `pass` and whose evidence cell names a non-empty file under `evidence/`. | `:41-67` |
+| `--passed` | Also: `evals.md` matches line 1 of `.evals.sha256` (a missing fingerprint fails) and `RD.md`, its Status line aside, matches line 2 when there is one; a `**Review:**` line in `results.md`, when there is one, says `clean` or `findings-fixed`; every eval id has exactly one row in `results.md`, whose result cell is `pass` and whose evidence cell names a non-empty file under `evidence/`. | `:41-75` |
 
 For a worktree under `.claude/worktrees/`, the fingerprint is always taken from the main checkout,
 never from the worker's copy (`:44-48`).
@@ -309,10 +320,11 @@ never from the worker's copy (`:44-48`).
 | Layer | Strength | Evidence |
 |---|---|---|
 | Skill preconditions: review-loop refuses to start unless `--ready` passes | prompt | `skills/review-loop/SKILL.md:16` |
+| `super-agents board set <X> done` refuses while `--passed` fails; the review-loop and the merger mark done through it | command (the dispatcher; `sa-core board set` called directly is not checked) | `bin/super-agents` |
 | Stop hook: a loop session cannot end a turn while `--passed` fails | hook, releasable (section 2.4) | `scripts/eval-gate.sh` |
 | SubagentStop hook: a worker cannot finish while `--passed` fails | hook, releasable | `scripts/worker-gate.sh` |
 | Router acceptance: reads `results.md` from the worktree but `evals.md` and `RD.md` from the main checkout; requires a pass row with an existing evidence file per eval and `Review: clean` or `findings-fixed` | prompt, by an agent with no write tools | `agents/router.md:46` |
-| Merger: refuses a branch that changed the ticket's `evals.md`, `RD.md` or `.evals.sha256`; pins the branch to a sha; merges without committing, then lint and build | prompt, git commands | `agents/merger.md:15-17` |
+| Merger: aborts a leftover `MERGE_HEAD` first; refuses a branch that changed anything under `specs/tickets` other than its own `results.md` and `evidence/`, or `review.md`, `CLAUDE.md`, `AGENTS.md`, `.gitignore`; pins the branch to a sha; merges without committing, then lint and build | prompt, git commands | `agents/merger.md:15-17` |
 | Checker: walks the merged feature in a browser on port 3000; a break counts only if reproduced twice | prompt; the only check by an agent that did not build the ticket, browser only | `agents/checker.md:11-13` |
 | `drop-specs` refuses while a ticket is not `done` on the committed board | script, fails closed | `scripts/drop-specs.sh:16-21` |
 
@@ -324,7 +336,8 @@ The threat model is stated in `docs/design/2026-11-11-design-changes.md:8` and `
 
 - Ending a turn or a worker run mid-loop while evals are failing or unrecorded.
 - A pass claimed with no evidence file, or with an eval missing from `results.md`.
-- An accidental edit of `evals.md` after approval (fingerprint), and, for tickets, a worker editing
+- An accidental edit of `evals.md` or `RD.md` after approval (fingerprint), also when followed by
+  `board set ready` on the approved ticket, and, for tickets, a worker editing
   its own copy of the ticket's approved files (main-checkout fingerprint, merger diff).
 - Requirements with no eval, incomplete evals, leftover placeholders (structure check).
 
@@ -332,14 +345,14 @@ The threat model is stated in `docs/design/2026-11-11-design-changes.md:8` and `
 
 - A deliberate agent with Bash under the same account. It can write `results.md`, any evidence file,
   `state.md`, `.job/` and even the main checkout. The stated answer is a container or VM.
-- The normal finish path: the orchestrator sets `active: false` before the hook can look (review P2).
+- Marking done by any route other than `super-agents board set <X> done`, which checks the evals
+  itself: an agent can still edit the Status line by hand or call `sa-core` directly (review P2).
 - Evidence that is stale or about other code: nothing binds a pass row to a commit or a run
   (review P3). `results.md` is written by the party being gated.
 - A missing or failing `sa-core`: every hook then lets everything through and says so (review P4).
-- Hostile repository content in `state.md` or `.job/` (review P1).
-- Changes a branch makes outside its own ticket folder, including another ticket's approved evals
-  and `review.md` (issue N-01).
-- Edits to `RD.md` after approval: only `evals.md` is fingerprinted (issue N-02).
+  `board set <X> done` does fail closed then.
+- A ticket approved before `RD.md` was fingerprinted (a one-line `.evals.sha256`): its `RD.md` is
+  not checked until it is approved again from `draft`.
 - Teammates on team tickets, the builder, tester, reviewer, merger, checker and reproducer: no hook
   gates them (`README.md:104`).
 - Harnesses other than Claude Code: no hooks run there (`README.md:45`).
@@ -430,7 +443,7 @@ sequenceDiagram
   W-->>G: turn ends
   alt check-evals --passed fails and under 3 blocks
     G-->>W: block, keep working
-  else passes, phase blocked, or 3 blocks used
+  else passes, phase blocked or waiting, or 3 blocks used
     G-->>RT: worker report reaches the router
   end
   RT->>RT: read results.md in the worktree, evals.md in the main checkout
@@ -471,7 +484,9 @@ stateDiagram-v2
   building --> done: merger, after the merge commit
   done --> [*]: drop-specs removes specs/tickets
   note right of building
-    sa-core accepts any status from any status today.
+    sa-core accepts any status from any status today,
+    except that super-agents board set X done
+    runs check-evals --passed first.
     The edges shown are the ones the prompts use.
   end note
 ```
@@ -490,8 +505,8 @@ binary (`scripts/sa-native.sh:18`). Nothing else is compiled.
 
 | Command | What it covers | Result on this branch, 2026-11-13 |
 |---|---|---|
-| `bash tests/run.sh` | Builds `core/` first (`:10`). Sections: hookio, board, check-evals, eval-gate, job-status and worker-gate, scan, init-project, superagent with a fake `claude`, hooks, dispatcher, skill lint, repo consistency, sa-native (`:27-499`). | `500 passed, 0 failed` (run offline with `CARGO_NET_OFFLINE=true`) |
-| `cd core && cargo test --locked` | `core/tests/*.rs` (board check, set, scan, root; cli; hookio; launcher) plus unit tests in `hookio.rs` and `isotime.rs`. | 43 passed, 0 failed |
+| `bash tests/run.sh` | Builds `core/` first (`:10`). Sections: hookio, board, check-evals, eval-gate, job-status and worker-gate, scan, init-project, superagent with a fake `claude`, hooks, dispatcher, skill lint, repo consistency, sa-native (`:27-499`). | `652 passed, 0 failed` on branch `fix/all-design-issues` |
+| `cd core && cargo test --locked` | `core/tests/*.rs` (board check, set, scan, root; cli; hookio; launcher) plus unit tests in `hookio.rs` and `isotime.rs`. | 46 passed, 0 failed |
 | `claude plugin eval . ...` | `evals/`: four `classify-risk` cases and `write-eval-stops-at-draft`. Model runs, by hand, about $2 (`README.md:126`). | not run for this document |
 
 There is no automated test of any agent prompt, the router flow, the merger or team mode
@@ -500,7 +515,8 @@ There is no automated test of any agent prompt, the router flow, the merger or t
 **CI** (`.github/workflows/ci.yml`, every push and pull request):
 
 - `test` on `ubuntu-latest` and `macos-latest`: ShellCheck (Linux only), `cargo fmt --check`,
-  `cargo clippy -D warnings`, `cargo test --locked`, then `bash tests/run.sh` (`:11-31`).
+  `cargo clippy -D warnings`, `cargo test --locked`, all on the toolchain `build-core.yml` pins, then
+  `bash tests/run.sh`.
 - `core-windows`: `cargo test --locked` (`:33-40`).
 - `shell-windows`: under Git Bash, installs the published binary through the launcher if this version
   is released, then `bash tests/run.sh` (`:43-60`).
@@ -514,8 +530,10 @@ There is no automated test of any agent prompt, the router flow, the merger or t
    published (`:41-43`).
 3. Commit the checksums as `dist/checksums/vX.Y.Z.txt`.
 4. Push tag `vX.Y.Z`. `release.yml` checks the tag against `plugin.json` and the checksum file,
-   re-runs ShellCheck and `tests/run.sh` with a read-only token, then the `publish` job verifies the
-   draft's binaries against the committed checksums and publishes (`release.yml:21-56`).
+   re-runs ShellCheck, `cargo test` and `tests/run.sh` with a read-only token, then the `publish` job
+   verifies the draft's binaries against the committed checksums, refuses when `core/` at the tag
+   differs from the commit the binaries were built from (the draft's `targetCommitish`), asks the
+   Linux binary for its version, and publishes (`release.yml`).
 5. Merge to `main` after publishing.
 
 Targets: Linux x86_64 and aarch64 (musl), macOS x86_64 and arm64, Windows x86_64

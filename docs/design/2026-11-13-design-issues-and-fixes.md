@@ -3,6 +3,15 @@
 Written 2026-11-13 against branch `docs/architecture-and-design-issues` (plugin 0.3.1). Paths are
 relative to the repository root. Design only: nothing in the repository was changed.
 
+**Update, 2026-11-13, branch `fix/all-design-issues`:** the fixes were then made, one commit per
+issue. Each issue below starts with a **Status** line (fixed, partially fixed with what remains, or
+skipped with the reason), and the Part 4 table carries the same word. The evidence, line numbers and
+"How it fails" text under each issue describe the code **before** the fix. Result: 8 fixed
+(C-01, C-05, C-06, N-01, N-02, N-05, N-07, N-09), 11 partially
+fixed (C-02, C-03, C-04, C-08, C-09, C-10, C-11, N-06, N-08, N-10, N-11), 3 skipped because each
+conflicts with a decision the user made (C-07, N-03, N-04). Tests after the last commit:
+`bash tests/run.sh` 652 passed, 0 failed; `cargo test --locked` 46 passed, 0 failed.
+
 Companions, which this register references instead of repeating:
 
 - **Review** = `docs/design/2026-11-11-design-review.md` (findings P1 to P9).
@@ -780,7 +789,7 @@ roadmap; unmarked items are additions to the named release.
 | C-09 | Recovery contradictions; watchdog repeats; `MERGE_HEAD` | medium | S-M | partially fixed | v0.4.1 item 8; v0.5.0; v0.6.0 |
 | C-10 | Over-powered reviewer, builder, watchdog, checker | medium | S | partially fixed | v0.4.1 item 7; v0.5.0 step 6 |
 | C-11 | Three loops; shell parser; Python compatibility; `specs/*` | low-medium | M | partially fixed | v0.4.1 item 9; v0.6.0 |
-| N-01 | Branch may change other tickets' evals and `review.md` | high | S | new, probed | not covered |
+| N-01 | Branch may change other tickets' evals and `review.md` | high | S | fixed | not covered |
 | N-02 | `RD.md` approved but not fingerprinted | medium | S-M | fixed | not covered |
 | N-03 | Worker gate matches one exact agent name | medium | S | skipped | not covered |
 | N-04 | `.claude` copies duplicate and shadow the plugin | medium | S | skipped | not covered |
