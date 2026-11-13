@@ -454,6 +454,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### N-06 The router is a single point of failure and its state exists only in its context
 
+- **Status: partially fixed.** First step only, prompts with a static guard: the checker records its verdict and the checked commit in `.super-agents/checks/NNN.txt`; the router's "On start" classifies tickets from the board, that file and the heartbeats (`done` without `CONFIRMED OK` = start the checker; `building` with heartbeat phase `done` = acceptance read, then merger), and "Finish" requires the file for every ticket. Doc correction: the location below (`specs/tickets/NNN-*/evidence/check.txt`) was wrong. Probed: an untracked file there survives `super-agents drop-specs` and leaves an untracked `specs/` in the branch, or is swept into `commit-tickets`. `merge.txt` (step 2) was not added: nothing in step 3 reads it. Remains: rounds per ticket, the merge queue, standing approval and the watchdog id still live only in the router's context; `drop-specs` does not check the verdicts itself. Not verified: any of this with a real router, and whether its Glob sees git-ignored `.job/` files.
+
 - **Severity:** medium. **Effort:** M. **Roadmap:** partly (v0.5.0 step 1 `state.json` records
   status, worktree and branch; v0.6.0 item 1 moves round counting into the worker; the merge queue
   and the check verdicts are not covered).
@@ -775,7 +777,7 @@ roadmap; unmarked items are additions to the named release.
 | N-03 | Worker gate matches one exact agent name | medium | S | skipped | not covered |
 | N-04 | `.claude` copies duplicate and shadow the plugin | medium | S | skipped | not covered |
 | N-05 | Worker that asks the user is blocked; no `SendMessage` | medium | S | fixed | partly (b) |
-| N-06 | Router single point of failure; state in context only | medium | M | new, read | partly (g), (e) |
+| N-06 | Router single point of failure; state in context only | medium | M | partially fixed | partly (g), (e) |
 | N-07 | Checker races the next merge; reproducers share a port | medium | S | fixed | not covered |
 | N-08 | Models, effort, turn limits without a rule or ceiling | medium | S-M | partially fixed | not covered |
 | N-09 | Release not tied to the source of its binaries | low-medium | S | fixed | not covered |
