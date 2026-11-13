@@ -321,12 +321,15 @@ cd "$T" || exit
 mkdir -p $T/bin; printf '#!/bin/sh\necho "ARGS: $*"; echo "TEAMS=$CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"\n' > $T/bin/claude; chmod +x $T/bin/claude
 cd $T/repo || exit; git switch -q main; git add specs && git commit -qm "tickets"
 t launch-yes 0 bash -c "echo y | PATH=$T/bin:\$PATH $X/superagent.sh --foo"; has launch-args "--agent super-agents:router --name router --permission-mode auto --foo"; has launch-teams "TEAMS=1"
+# C-05: in a repository with a remote a worktree starts from the remote's default branch unless worktree.baseRef is head, and the tickets are only on the local branch
+has launch-sets-worktree-base '--settings {"worktree":{"baseRef":"head"}}'
 [ "$(git branch --show-current)" != main ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL launch did not branch"; }
 [[ $(git branch --show-current) =~ ^integration/[0-9]{8}-[0-9]{6}$ ]] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL integration branch name has no seconds: $(git branch --show-current)"; }
 git switch -q main; t launch-no 1 bash -c "echo n | PATH=$T/bin:\$PATH $X/superagent.sh"; has launch-no "refusing"
 t launch-nongit 1 bash -c "cd $T && PATH=$T/bin:\$PATH $X/superagent.sh"
 git switch -q -c feat/x; t launch-mode-override 0 env PATH="$T/bin:$PATH" $X/superagent.sh --permission-mode default
 has launch-mode-override "--permission-mode default"; hasnt launch-mode-override "--permission-mode auto"; git switch -q main
+grep -q 'ticket folder is missing' "$R/agents/worker.md" && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL worker.md no longer stops when its worktree lacks the ticket folder (C-05)"; }
 # M3: workers get worktrees of committed files, so approved-but-uncommitted tickets are committed first (or the launch stops)
 git switch -q -c feat/y; echo more > specs/tickets/003-profile/extra.md
 t launch-uncommitted-no 1 bash -c "echo n | PATH=$T/bin:\$PATH $X/superagent.sh"; has launch-uncommitted-no "uncommitted"

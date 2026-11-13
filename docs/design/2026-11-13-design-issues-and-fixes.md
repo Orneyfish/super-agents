@@ -117,6 +117,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### C-05 Workers start from the remote's default branch, not from the integration branch
 
+- **Status: fixed.** `scripts/superagent.sh` starts the router with `--settings '{"worktree":{"baseRef":"head"}}'`; `agents/worker.md` step 1 stops with `blocked: ticket folder is missing` when its worktree lacks the ticket. Test: `launch-sets-worktree-base` plus a static guard. Not verified: the real worker in a repository with a remote, and what the CLI does when the user passes a second `--settings`.
+
 - **Severity:** high (in any cloned repository the parallel flow does not work as documented).
   **Effort:** S. **Roadmap:** section (b) "Changed after testing"; v0.4.1 item 2.
 - **Evidence:** `scripts/superagent.sh:22` passes no `worktree.baseRef` setting.
@@ -735,7 +737,7 @@ roadmap; unmarked items are additions to the named release.
 | C-02 | `done` not gated; agent owns releases; re-fingerprint | high | M | open | v0.5.0 steps 3, 5 |
 | C-03 | Evidence not bound to code; self-certified results; first row wins | high | L | open | v0.5.0 steps 4, 7 |
 | C-04 | Gates fail open; trust agent-written `dir`; launcher | high | S-M | open | v0.4.1 items 4-6; v0.5.0 step 5 |
-| C-05 | Worktrees start from the remote default branch | high | S | open | v0.4.1 item 2 |
+| C-05 | Worktrees start from the remote default branch | high | S | fixed | v0.4.1 item 2 |
 | C-06 | Stop gate spends its blocks on waits | high | S | open | v0.4.1 item 3 |
 | C-07 | Team mode bypasses isolation and the gate | medium | M | open | v0.6.0 item 2 |
 | C-08 | Runtime status in tracked files in the main checkout | medium | M | open | v0.5.0 step 1 |
