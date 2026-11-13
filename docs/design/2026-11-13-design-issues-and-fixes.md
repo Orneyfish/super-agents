@@ -185,6 +185,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### C-09 Recovery paths contradict each other or do not exist
 
+- **Status: partially fixed.** Done (v0.4.1 item 8): `agents/merger.md` step 0 finds and aborts a leftover `MERGE_HEAD` (`merge-head-recovery`); `scripts/watchdog-loop.sh` compares the problems with their minute counts masked, so a persisting problem is reported once (`watchdog-persisting-problem-silent`). The problem text itself is unchanged (no `kind :: details` form, no `renotify_min`). Remains: the restart instruction in `agents/router.md` ("continues in the existing worktree") still contradicts `isolation: worktree`, because the roadmap's replacement needs the branch recorded per ticket (`state.json`); one heartbeat per worktree; no notion of a flaky eval.
+
 - **Severity:** medium. **Effort:** S for the v0.4.1 parts, M overall. **Roadmap:** section (g);
   v0.4.1 item 8; v0.5.0 step 7; v0.6.0 item 3.
 - **Evidence:** "start a fresh worker that continues in the existing worktree"
@@ -755,7 +757,7 @@ roadmap; unmarked items are additions to the named release.
 | C-06 | Stop gate spends its blocks on waits | high | S | fixed | v0.4.1 item 3 |
 | C-07 | Team mode bypasses isolation and the gate | medium | M | skipped | v0.6.0 item 2 |
 | C-08 | Runtime status in tracked files in the main checkout | medium | M | open | v0.5.0 step 1 |
-| C-09 | Recovery contradictions; watchdog repeats; `MERGE_HEAD` | medium | S-M | open | v0.4.1 item 8; v0.5.0; v0.6.0 |
+| C-09 | Recovery contradictions; watchdog repeats; `MERGE_HEAD` | medium | S-M | partially fixed | v0.4.1 item 8; v0.5.0; v0.6.0 |
 | C-10 | Over-powered reviewer, builder, watchdog, checker | medium | S | partially fixed | v0.4.1 item 7; v0.5.0 step 6 |
 | C-11 | Three loops; shell parser; Python compatibility; `specs/*` | low-medium | M | open | v0.4.1 item 9; v0.6.0 |
 | N-01 | Branch may change other tickets' evals and `review.md` | high | S | new, probed | not covered |

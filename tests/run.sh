@@ -286,6 +286,11 @@ wl 5;      has watchdog-interval "SLEEP 300"
 wl 0;      has watchdog-zero "SLEEP 600"
 wl five;   has watchdog-word "SLEEP 600"
 wl 0.5;    has watchdog-fraction "SLEEP 600"; has watchdog-fraction-warns "bad interval_min"
+# C-09: the minute counts grow every round, so a problem that persists is reported once, and again only when the set of problems changes
+printf '#!/bin/sh\ncase "$*" in "board root") echo "%s";; "board scan") n=$(cat "%s/scans" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "%s/scans"\n  echo "PROBLEM 001 worker silent for $((30+n*10)) min in phase building"; [ $n -ge 3 ] && echo "PROBLEM 002 is building but has no status file";; esac\n' "$T/repo" "$T" "$T" > $T/fakecore; chmod +x $T/fakecore
+printf '#!/bin/sh\nn=$(cat "%s/sleeps" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "%s/sleeps"; [ $n -ge 3 ] && kill $PPID\n' "$T" "$T" > $T/fs/sleep
+: > .super-agents/watchdog.conf; LAST=$(SUPER_AGENTS_CORE=$T/fakecore PATH="$T/fs:$PATH" $X/watchdog-loop.sh 2>&1)
+eq watchdog-persisting-problem-silent "$(grep -c 'PROBLEM 001' <<<"$LAST")" 2; has watchdog-new-problem-reported "PROBLEM 002"; has watchdog-first-round "silent for 40 min"
 rm -rf .job .super-agents
 
 # ---- init-project.sh
@@ -498,6 +503,14 @@ h=$T/h1; git init -q -b main $h; (cd $h && git config user.email t@t && git conf
   && git switch -q ticket && echo fix > fix.txt && git add . && git commit -qm fix \
   && git switch -q integration && git merge -q --no-ff ticket -m remerge)
 [ -f $h/work.txt ] && [ -f $h/fix.txt ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL re-merge after an aborted merge lost the ticket's work"; }
+
+# C-09 merge-head-recovery: a merge an earlier run left staged is found by the merger's own check and aborted; uncommitted status edits survive, and the branch merges again
+mh=$(grep -o 'git rev-parse -q --verify MERGE_HEAD' "$R/agents/merger.md" | head -1); [ -n "$mh" ] && grep -q 'Leftover merge' "$R/agents/merger.md" && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL merger.md has no step for a leftover MERGE_HEAD"; }
+h=$T/mh; git init -q -b main $h; (cd $h && git config user.email t@t && git config user.name t && echo a > f && echo draft > board && git add . && git commit -qm base \
+  && git switch -q -c integration && git switch -q -c ticket main && echo work > work.txt && git add . && git commit -qm work \
+  && git switch -q integration && echo building > board && git merge -q --no-ff --no-commit ticket >/dev/null 2>&1)
+if (cd $h && ${mh:-false} >/dev/null); then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL merge-head-recovery: the check did not see the staged merge"; fi
+(cd $h && git merge --abort && ! ${mh:-true} >/dev/null && [ "$(cat board)" = building ] && [ ! -e work.txt ] && git merge -q --no-ff ticket -m again && [ -f work.txt ]) && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL merge-head-recovery: abort lost the status edit, left the merge, or the branch did not merge again"; }
 
 # ---- portable skill lint (Agent Skills format): name == folder, sane name/description, no Claude-only variable in skills
 for d in "$R"/skills/*/; do n=$(basename "$d"); f="$d/SKILL.md"
