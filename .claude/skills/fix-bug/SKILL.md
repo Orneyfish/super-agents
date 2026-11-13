@@ -1,6 +1,6 @@
 ---
 name: fix-bug
-description: Find and fix the root cause of a bug: reproduce it, confirm the cause, fix once in shared code, prove it with a regression test, and use git history to locate or roll back the breaking change. Use for "X is broken", "this stopped working", errors and regressions.
+description: 'Find and fix the root cause of a bug: reproduce it, confirm the cause, fix once in shared code, prove it with a regression test, and use git history to locate or roll back the breaking change. Use for "X is broken", "this stopped working", errors and regressions.'
 argument-hint: <what is wrong and how you saw it>
 ---
 
