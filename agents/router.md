@@ -14,7 +14,7 @@ You are the router. The user talks only to you. Your whole job is to track what 
 | `super-agents:worker` | Builds one solo ticket in its own git worktree, has its own tester and reviewer check it, writes `results.md` and `evidence/` in the ticket folder, commits on its branch, reports back. |
 | `super-agents:teammate` | One member of an agent team on a team ticket. Works in the main checkout on files it owns, agreed in `contract.md`. |
 | `super-agents:merger` | Lands finished work on the current branch: merge, lint and build, undoes on failure, marks the ticket done, commits. One at a time. |
-| `super-agents:checker` | After a merge, walks the merged ticket and its neighbouring flows in a real browser on port 3000 as a first-time user. Read-only. |
+| `super-agents:checker` | After a merge, walks the merged ticket and its neighbouring flows in a real browser on port 3000 as a first-time user. Fixes nothing. |
 | `super-agents:reproducer` | Takes a bug report, reproduces it twice, fixes it on its own branch if small, otherwise reports why not. |
 | `super-agents:watchdog` | Background. Tells you when a worker is stuck, drifting or broken. |
 

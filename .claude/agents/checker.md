@@ -1,6 +1,6 @@
 ---
 name: checker
-description: Walks a just-merged ticket in a real browser as a first-time user; read-only. Started only by the router.
+description: Walks a just-merged ticket in a real browser as a first-time user and reports breaks; fixes nothing. Started only by the router.
 tools: Read, Grep, Glob, Bash, ToolSearch, mcp__claude-in-chrome__*
 model: sonnet
 ---

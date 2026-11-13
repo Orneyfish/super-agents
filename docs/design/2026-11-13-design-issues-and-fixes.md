@@ -204,6 +204,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### C-10 Agents have more power than their roles need
 
+- **Status: partially fixed.** Done (v0.4.1 item 7): `agents/reviewer.md` and `agents/builder.md` have `tools:` allowlists (no Agent, web tools or MCP connectors; the reviewer keeps the browser tools and has no Edit or Write), no agent uses `disallowedTools`, and the checker is no longer described as read-only. Guard in `tests/run.sh`. Behaviour change: reviewer and builder lose the tools named above. Remains: the watchdog keeps Edit (dropping it needs a `watchdog set` command), the merger gets no Agent tool yet, and the PreToolUse deny rules are v0.5.0 step 6.
+
 - **Severity:** medium. **Effort:** S. **Roadmap:** section (d); v0.4.1 item 7; v0.5.0 step 6.
 - **Evidence:** `agents/reviewer.md:4` is a three-tool denylist; `agents/builder.md:1-5` has no
   `tools` line; both run under the session's permissions and, in the parallel flow,
@@ -754,7 +756,7 @@ roadmap; unmarked items are additions to the named release.
 | C-07 | Team mode bypasses isolation and the gate | medium | M | skipped | v0.6.0 item 2 |
 | C-08 | Runtime status in tracked files in the main checkout | medium | M | open | v0.5.0 step 1 |
 | C-09 | Recovery contradictions; watchdog repeats; `MERGE_HEAD` | medium | S-M | open | v0.4.1 item 8; v0.5.0; v0.6.0 |
-| C-10 | Over-powered reviewer, builder, watchdog, checker | medium | S | open | v0.4.1 item 7; v0.5.0 step 6 |
+| C-10 | Over-powered reviewer, builder, watchdog, checker | medium | S | partially fixed | v0.4.1 item 7; v0.5.0 step 6 |
 | C-11 | Three loops; shell parser; Python compatibility; `specs/*` | low-medium | M | open | v0.4.1 item 9; v0.6.0 |
 | N-01 | Branch may change other tickets' evals and `review.md` | high | S | new, probed | not covered |
 | N-02 | `RD.md` approved but not fingerprinted | medium | S-M | new, probed | not covered |

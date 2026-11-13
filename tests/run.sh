@@ -549,6 +549,10 @@ for f in "$R"/scripts/* "$R"/bin/*; do [ -x "$f" ] && ok || bad "$f is not execu
 for f in "$R"/agents/*.md; do n=$(basename "$f" .md)
   [ "$(sed -n 's/^name: *//p' "$f" | head -1)" = "$n" ] && [ -n "$(sed -n 's/^description: *//p' "$f" | head -1)" ] && ok || bad "agent $n: frontmatter name must equal the filename and description must be set"
 done
+# C-10: a tools: line is an allowlist the harness enforces; disallowedTools leaves Bash, Agent and every connector the user installed
+for f in "$R"/agents/*.md; do
+  sed -n '2,/^---$/p' "$f" | grep -q '^tools: ' && ! sed -n '2,/^---$/p' "$f" | grep -q '^disallowedTools:' && ok || bad "agent $(basename "$f" .md): needs a tools: allowlist and no disallowedTools"
+done
 for ref in $(grep -ohE 'super-agents:[a-z][a-z-]*' "$R"/agents/*.md "$R"/skills/*/SKILL.md | sort -u); do r=${ref#super-agents:}
   [ -f "$R/agents/$r.md" ] || [ -d "$R/skills/$r" ] && ok || bad "'$ref' names no agent or skill (typo in an Agent(...) allowlist silently stops dispatch)"
 done

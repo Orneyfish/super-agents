@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: Read-only independent review of one feature against review.md. Started by the review-loop and by workers.
-disallowedTools: Edit, Write, NotebookEdit
+tools: Read, Grep, Glob, Bash, ToolSearch, mcp__claude-in-chrome__*
 model: sonnet
 ---
 

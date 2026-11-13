@@ -74,11 +74,11 @@ What degrades outside Claude Code: the hooks that stop an agent from saying "don
 | `worker` | One solo ticket in its own git worktree: builds, has the tester and reviewer check it, writes `results.md` + `evidence/`, commits on its branch. Sonnet. |
 | `teammate` | One member of an agent team on a `team` ticket. Works in the main checkout on files it owns, agreed first in `contract.md`; the last-named teammate integrates and tests. |
 | `merger` | Lands a solo branch, a team's work, or a fix branch on the current branch: merges without committing, runs lint + build, then commits or aborts; refuses a branch that changed the approved `evals.md`; marks the ticket done. One at a time. |
-| `checker` | After a merge, walks the ticket and its neighbouring flows in a real browser on port 3000 as a first-time user. Read-only. Reports only breaks it reproduced twice. |
+| `checker` | After a merge, walks the ticket and its neighbouring flows in a real browser on port 3000 as a first-time user. Fixes nothing (it has Bash, so that is a prompt rule). Reports only breaks it reproduced twice. |
 | `reproducer` | Reproduces a bug twice in its own worktree; fixes it on its own branch if small and local; otherwise reports. |
 | `watchdog` | Background. Runs a scan every 10 minutes and tells the router about silent, blocked or slow workers, dependency cycles, a down app. Rules live in `.super-agents/watchdog.conf`. |
 | `tester` | Runs a ticket's evals exactly as written and returns PASS/FAIL with evidence. Uses `agent-browser` for browser checks, falls back to the Chrome tools. |
-| `builder`, `reviewer` | The review-loop's fresh-context builder and read-only reviewer (workers reuse the reviewer). |
+| `builder`, `reviewer` | The review-loop's fresh-context builder and reviewer (workers reuse the reviewer). Both have a `tools` allowlist: no Agent tool, no web tools, no MCP connectors except the reviewer's browser; the reviewer has no Edit or Write. |
 | `first-time-user` | The blind newcomer used by the first-time-user skill. |
 
 ## Ticket folder

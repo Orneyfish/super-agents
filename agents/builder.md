@@ -1,6 +1,7 @@
 ---
 name: builder
 description: Builds or repairs one feature from its RD.md in a fresh context. Started only by the review-loop.
+tools: Read, Grep, Glob, Bash, Edit, Write, TodoWrite
 model: sonnet
 ---
 
