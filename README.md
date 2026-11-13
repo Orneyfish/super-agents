@@ -115,7 +115,7 @@ specs/tickets/BOARD.md                 # | # | Title | Status | Mode | Runs |
 specs/tickets/001-slug/
   RD.md        # **Status:** draft|ready|building|done, **Risk:**, FR-/NFR- requirements, Touches, Must not touch, Decisions, Out of scope
   evals.md     # Setup, E1..En (check / pass when / fail when / covers), Definition of done. Approved by you; not edited while building
-  .evals.sha256  # fingerprint of evals.md, written when you approve it (mark-ready; CRLF counts as LF, so Git's line-ending conversion on Windows does not matter); the done-gate fails if evals.md changes afterwards
+  .evals.sha256  # fingerprints of evals.md (line 1) and of RD.md without its Status line (line 2), written when you approve it (mark-ready; CRLF counts as LF, so Git's line-ending conversion on Windows does not matter); the done-gate fails if either file changes afterwards
   mockup.html  # UI tickets only
   contract.md  # team tickets: who owns which files, the names they share
   results.md   # written by the worker/tester: one row per eval, pass/fail, evidence path

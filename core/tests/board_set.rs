@@ -17,11 +17,44 @@ fn set_a_ticket_updates_rd_md_the_board_row_and_the_fingerprint() {
     assert!(read(&d.join("RD.md")).contains("\n**Status:** ready\n"));
     assert!(read(&root.join("specs/tickets/BOARD.md"))
         .contains("| 001 | Found | ready | team | alongside |\n"));
-    // the same value board.py wrote for this evals.md
+    // line 1: the same value board.py wrote for this evals.md; line 2: RD.md without its Status line
+    let fp = read(&d.join(".evals.sha256"));
+    let rd = sa(root, &["fingerprint-rd", s(&d.join("RD.md"))]).stdout;
     assert_eq!(
-        read(&d.join(".evals.sha256")),
-        "5341747a4910508fc4b4c972cce369d89888b87a959d6e26954dd69ab3d103fa\n"
+        fp,
+        format!(
+            "5341747a4910508fc4b4c972cce369d89888b87a959d6e26954dd69ab3d103fa\n{}  RD.md\n",
+            rd.trim_end()
+        )
     );
+    // a status change rewrites the Status line and nothing the fingerprint covers
+    assert_eq!(
+        sa(root, &["board", "set", "001", "building", s(root)]).code,
+        0
+    );
+    assert_eq!(
+        sa(root, &["fingerprint-rd", s(&d.join("RD.md"))]).stdout,
+        rd
+    );
+    assert_eq!(read(&d.join(".evals.sha256")), fp);
+    // any other edit does change it, and CRLF line ends do not
+    let text = read(&d.join("RD.md"));
+    fs::write(d.join("crlf.md"), text.replace('\n', "\r\n")).unwrap();
+    assert_eq!(
+        sa(root, &["fingerprint-rd", s(&d.join("crlf.md"))]).stdout,
+        rd
+    );
+    fs::write(
+        d.join("RD.md"),
+        text.replace("**Risk:** low", "**Risk:** high"),
+    )
+    .unwrap();
+    assert_ne!(
+        sa(root, &["fingerprint-rd", s(&d.join("RD.md"))]).stdout,
+        rd
+    );
+    fs::write(d.join("RD.md"), text).unwrap();
+    fs::remove_file(d.join("crlf.md")).unwrap();
     assert_eq!(
         sa(root, &["board", "check", s(root)]).stdout,
         "OK: board (3 tickets)\n"

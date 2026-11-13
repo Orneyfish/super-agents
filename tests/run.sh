@@ -107,6 +107,15 @@ cp $D/.evals.sha256 $T/fp.bak; sed 's/$/\r/' $T/fp.bak > $D/.evals.sha256; t eva
 cp $D/evals.md $T/evals.bak; printf '\n<!-- loosened -->\n' >> $D/evals.md
 t eval-tampered 1 $X/check-evals.sh $D --passed;                   has eval-tampered "changed after the user approved"
 cp $T/evals.bak $D/evals.md; t eval-untampered 0 $X/check-evals.sh $D --passed
+# N-02: RD.md is approved too (its Risk sets the reviewer's threshold): the fingerprint file's second line covers it, without the Status line
+[ "$(wc -l < $D/.evals.sha256 | tr -d ' ')" = 2 ] && grep -q '  RD.md' $D/.evals.sha256 && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL ready did not write the RD.md fingerprint line"; }
+cp $D/RD.md $T/rd.bak; sedi 's/Risk:\*\* low/Risk:** high/' $D/RD.md
+t eval-rd-tampered 1 $X/check-evals.sh $D --passed;               has eval-rd-tampered "RD.md changed after the user approved it"
+cp $T/rd.bak $D/RD.md; $BOARD set $D building >/dev/null; t eval-rd-status-change-ok 0 $X/check-evals.sh $D --passed
+# a one-line fingerprint (approved by an older version) still passes: no re-approval needed
+cp $D/.evals.sha256 $T/fp2.bak; sed -n 1p $T/fp2.bak > $D/.evals.sha256; sedi 's/Risk:\*\* low/Risk:** high/' $D/RD.md
+t eval-rd-one-line-fingerprint 0 $X/check-evals.sh $D --passed;   cp $T/rd.bak $D/RD.md; $BOARD set $D ready >/dev/null
+grep -q 'only while' "$R/skills/classify-risk/SKILL.md" && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL classify-risk may rewrite the Risk line of an approved RD.md (N-02)"; }
 # a worker's worktree copy: even with its own fingerprint file deleted, the main checkout's copy still catches the change
 git worktree add -q $T/wt2 -b w2 >/dev/null 2>&1; mkdir -p $T/wt2/$D; cp -R $D/. $T/wt2/$D/; rm -f $T/wt2/$D/.evals.sha256
 t eval-worktree-clean 0 $X/check-evals.sh $T/wt2/$D --passed

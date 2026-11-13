@@ -19,6 +19,7 @@ usage: sa-core board check [root]
        sa-core board scan [root]
        sa-core board root
        sa-core fingerprint <file>
+       sa-core fingerprint-rd <RD.md>
        sa-core hookio get <a.b.c>        (reads JSON on stdin)
        sa-core hookio emit <block|message|deny|context> <text>
        sa-core hookio status-init <ticket> <dir> <phase> <now> <agent>
@@ -39,6 +40,13 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         ["fingerprint", file] => match board::fingerprint(Path::new(file)) {
+            Ok(hex) => {
+                println!("{hex}");
+                ExitCode::SUCCESS
+            }
+            Err(e) => fail(&format!("{file}: {e}")),
+        },
+        ["fingerprint-rd", file] => match board::fingerprint_rd(Path::new(file)) {
             Ok(hex) => {
                 println!("{hex}");
                 ExitCode::SUCCESS

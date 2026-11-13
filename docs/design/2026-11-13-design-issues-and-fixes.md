@@ -298,6 +298,8 @@ Test baseline for this document: `CARGO_NET_OFFLINE=true bash tests/run.sh` gave
 
 ### N-02 `RD.md` is approved by the user but not fingerprinted
 
+- **Status: fixed.** `board set <X> ready` writes a second line to `.evals.sha256` (`<hex>  RD.md`): sha256 of `RD.md` with CRLF read as LF and the first `**Status:**` line removed (`core/src/board.rs` `fingerprint_rd`, `sa-core fingerprint-rd`). `scripts/check-evals.sh --passed` compares it and fails with "RD.md changed after the user approved it"; a one-line file from an older version still passes. `classify-risk` writes the Risk line only while the status is `draft`. Tests: `core/tests/board_set.rs`, `eval-rd-tampered`, `eval-rd-status-change-ok`, `eval-rd-one-line-fingerprint`. Limit: a later `board set <X> ready` still re-fingerprints both files when run from `draft` (C-02).
+
 - **Severity:** medium. **Effort:** S to M. **Roadmap:** not covered (roadmap (d) rule 1 denies
   Edit/Write on `RD.md`, which it states is a convenience that matched nothing live).
 - **Evidence:** `core/src/board.rs:273-278` fingerprints `evals.md` only. `README.md:89` and
@@ -769,7 +771,7 @@ roadmap; unmarked items are additions to the named release.
 | C-10 | Over-powered reviewer, builder, watchdog, checker | medium | S | partially fixed | v0.4.1 item 7; v0.5.0 step 6 |
 | C-11 | Three loops; shell parser; Python compatibility; `specs/*` | low-medium | M | open | v0.4.1 item 9; v0.6.0 |
 | N-01 | Branch may change other tickets' evals and `review.md` | high | S | new, probed | not covered |
-| N-02 | `RD.md` approved but not fingerprinted | medium | S-M | new, probed | not covered |
+| N-02 | `RD.md` approved but not fingerprinted | medium | S-M | fixed | not covered |
 | N-03 | Worker gate matches one exact agent name | medium | S | skipped | not covered |
 | N-04 | `.claude` copies duplicate and shadow the plugin | medium | S | skipped | not covered |
 | N-05 | Worker that asks the user is blocked; no `SendMessage` | medium | S | fixed | partly (b) |

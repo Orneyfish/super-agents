@@ -2,7 +2,7 @@
 # Usage: check-evals.sh <feature-dir> [--ready] [--passed]       e.g. specs/checkout or specs/tickets/003-login
 #   (no flag)  RD.md + evals.md are well formed: every requirement is covered, every eval complete, no TODO left
 #   --ready    also **Status:** must be ready (the user approved the evals)
-#   --passed   also every eval has a pass row in results.md pointing at a non-empty evidence/ file, and evals.md matches the fingerprint written at approval (no fingerprint = fail)
+#   --passed   also every eval has a pass row in results.md pointing at a non-empty evidence/ file, and evals.md and RD.md (its Status line aside) match the fingerprints written at approval (no fingerprint = fail)
 # Exit 0 = ok. Exit 1 = every problem printed as a FAIL line.
 here="$(cd "$(dirname "$0")" && pwd)"; d="${1:?feature dir}"; shift; rd="$d/RD.md"; ev="$d/evals.md"; rs="$d/results.md"; bad=0; ready=0; passed=0
 for a; do case $a in --ready) ready=1;; --passed) passed=1;; esac; done
@@ -49,7 +49,10 @@ if [ "$passed" = 1 ]; then
   fi
   if [ -f "$fp" ]; then
     if got=$("$here/sa-native.sh" fingerprint "$ev"); then
-      [ "$got" = "$(tr -d ' \r\n' < "$fp")" ] || fail "evals.md changed after the user approved it; restore it (git checkout) or ask the user to re-approve"
+      [ "$got" = "$(sed -n 1p "$fp" | tr -d ' \r\n')" ] || fail "evals.md changed after the user approved it; restore it (git checkout) or ask the user to re-approve"
+      # line 2, "<hex>  RD.md": RD.md as approved, without its Status line. A one-line file was written by an older version: nothing to compare.
+      want=$(sed -n '2s/[[:space:]].*//p' "$fp")
+      if [ -n "$want" ]; then [ "$("$here/sa-native.sh" fingerprint-rd "$rd")" = "$want" ] || fail "RD.md changed after the user approved it; restore it (git checkout) or ask the user to re-approve"; fi
     else
       fail "could not fingerprint $ev; run 'super-agents install-core'"
     fi

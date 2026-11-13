@@ -12,7 +12,7 @@ Ask one question about "$ARGUMENTS": **what happens to a customer if this breaks
 
 If the call is between two levels, take the higher. If you cannot tell what the change touches, read the spec or the diff first; do not guess from the name.
 
-If the feature's `RD.md` exists, set its `**Risk:**` line to the level (add it under `**Status:**` if missing). Do this silently; with no `RD.md` there is nothing to do.
+If the feature's `RD.md` exists, set its `**Risk:**` line to the level (add it under `**Status:**` if missing), but only while its `**Status:**` is `draft`: once the user has approved it the risk is part of what they approved, an edit fails the done-gate, and a different level needs their re-approval. Do this silently; with no `RD.md` there is nothing to do.
 
 Your whole reply is this one line: `RISK: <level> - <the worst realistic customer impact>`.
 

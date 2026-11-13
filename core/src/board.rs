@@ -13,6 +13,11 @@ use std::sync::LazyLock;
 /// Windows default) a worker's worktree is checked out with CRLF, and its evals.md must still match. A carriage
 /// return that is not part of a CRLF is content and still counts.
 pub fn fingerprint(file: &Path) -> io::Result<String> {
+    Ok(format!("{:x}", Sha256::digest(lf_bytes(file)?)))
+}
+
+/// A file's bytes with every CRLF read as LF.
+fn lf_bytes(file: &Path) -> io::Result<Vec<u8>> {
     let bytes = fs::read(file)?;
     let mut text = Vec::with_capacity(bytes.len());
     for (i, &b) in bytes.iter().enumerate() {
@@ -20,7 +25,18 @@ pub fn fingerprint(file: &Path) -> io::Result<String> {
             text.push(b);
         }
     }
-    Ok(format!("{:x}", Sha256::digest(text)))
+    Ok(text)
+}
+
+/// The fingerprint of an RD.md as the user approved it: like `fingerprint`, but without the first `**Status:**` line,
+/// which `board set` rewrites on every status change. The second line of `.evals.sha256` (`<hex>  RD.md`).
+pub fn fingerprint_rd(file: &Path) -> io::Result<String> {
+    let bytes = lf_bytes(file)?;
+    let text = String::from_utf8_lossy(&bytes);
+    Ok(format!(
+        "{:x}",
+        Sha256::digest(STATUS_LINE.replace(&text, "").as_bytes())
+    ))
 }
 
 pub const STATUSES: [&str; 4] = ["draft", "ready", "building", "done"];
@@ -239,7 +255,7 @@ pub fn check(root: &Path) -> (String, bool) {
 static STATUS_LINE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^\*\*Status:\*\*[^\r\n]*").expect("status line regex"));
 
-/// `board set`: RD.md's Status line, the fingerprint on `ready`, and the board row for a ticket folder.
+/// `board set`: RD.md's Status line, the fingerprints on `ready`, and the board row for a ticket folder.
 pub fn set_status(root: &Path, target: &str, status: &str) -> Result<(), String> {
     if !STATUSES.contains(&status) {
         return Err(format!("status must be one of {STATUSES_TEXT}"));
@@ -273,8 +289,11 @@ pub fn set_status(root: &Path, target: &str, status: &str) -> Result<(), String>
     let evals = dir.join("evals.md");
     if status == "ready" && evals.exists() {
         let hex = fingerprint(&evals).map_err(|e| format!("{}: {e}", evals.display()))?;
+        let rd_hex = fingerprint_rd(&rd).map_err(|e| format!("{}: {e}", rd.display()))?;
         let fp = dir.join(".evals.sha256");
-        fs::write(&fp, format!("{hex}\n")).map_err(|e| format!("{}: {e}", fp.display()))?;
+        // line 1 is all that older versions wrote and read; line 2 covers RD.md
+        fs::write(&fp, format!("{hex}\n{rd_hex}  RD.md\n"))
+            .map_err(|e| format!("{}: {e}", fp.display()))?;
     }
 
     let board = board_path(root);
