@@ -4,7 +4,11 @@ description: 'Find and fix the root cause of a bug: reproduce it, confirm the ca
 argument-hint: <what is wrong and how you saw it>
 ---
 
+# Fix bug
+
 Bug: "$ARGUMENTS". No fix before a reproduction and a confirmed cause.
+
+## Instructions
 
 1. **Branch.** Work on `fix/<short-slug>` (or the feature branch the bug belongs to). Never on main/master.
 2. **Reproduce.** "Reproduced" means one command you already ran that goes red on this bug, ideally a failing test (use the project's test setup). Then minimise it: cut steps and inputs until the smallest case still goes red. If you cannot reproduce it after real attempts, stop and say so; do not fix blind.
@@ -16,3 +20,9 @@ Bug: "$ARGUMENTS". No fix before a reproduction and a confirmed cause.
 8. **Report:** symptom, confirmed cause with the probe that confirmed it, the fix, the test, and anything you did not check.
 
 **Work that is not code** (a document, a data analysis, a procedure). The reproduction is the check that shows the error: rerun the script, open the source and find the passage, follow the runbook step. Fix at the root (the data, the template, the source list), not the one wrong output, and keep the check so the error cannot return. `templates/kinds.md` (`super-agents template kinds.md`) lists the checks for each kind.
+
+## Examples
+
+Request: `/fix-bug login fails with a 500 when the email has a capital letter`.
+The skill works on `fix/login-email-case`, writes a failing test that sends `Ada@Example.com` and sees it go red, and ranks three candidate causes with a probe for each. The probe confirms that the lookup is case-sensitive. It fixes the shared `normalizeEmail` helper once, so signup and password reset get the fix too.
+It reruns the tests, keeps the repro as a regression test, and commits only the files it changed with a message naming the cause and the test. It does not push.

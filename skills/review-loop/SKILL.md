@@ -6,7 +6,11 @@ disable-model-invocation: true
 allowed-tools: Bash(super-agents *)
 ---
 
+# Review loop
+
 You are the orchestrator for "$ARGUMENTS". You never write the work, test, or review yourself. Each of those runs in a fresh subagent so none of them inherits your reasoning or each other's: `super-agents:builder`, `super-agents:tester`, `super-agents:reviewer`. Give them paths and findings, not your opinions. Start each one in the foreground (`run_in_background: false`) and wait for its reply: your turn ending while one still runs is not "done", and the Stop hook only tolerates it, it does not check anything then.
+
+## Instructions
 
 **Harness note.** `super-agents:<role>` names the subagent definitions in `agents/<role>.md`; Claude Code runs them as subagents. In a harness without Claude-style subagents, run each role in a fresh session or context seeded with that file's body, and keep the roles separate: whoever built the work never tests or reviews it. Hooks (the done-gate) are Claude Code only; elsewhere run `super-agents check-evals <dir> --passed` yourself before saying the work is done.
 
@@ -67,3 +71,9 @@ A subagent that fails (an error, an empty reply, a tester reply with no PASS/FAI
 2. Report plainly: rounds used, evals P/T with where the evidence lives (`<dir>/results.md`, `<dir>/evidence/`), anything still open (do not hide it), branch name.
 3. **Learned rules.** For each finding class that came back in two or more rounds, or any finding the user calls a non-problem, propose a rule for the "Rules learned over time" section of `review.md`. When the class is mechanical, propose a deterministic check (a command to add to the checks in `review.md`) instead of a prose rule. Append only the ones the user approves.
 4. When the work has a live app that users will see, suggest `/super-agents:first-time-user <name>` next.
+
+## Examples
+
+Request: `/review-loop 004`.
+The skill sets `<dir>` to `specs/tickets/004-*`, checks the preconditions (`super-agents check-evals <dir> --ready` prints `OK`, `review.md` present, not on main), and starts a `super-agents:builder` subagent. Then `super-agents:tester` runs every eval in `evals.md` and `super-agents:reviewer` reviews the result. If an eval fails or the reviewer finds something new, round 2 builds a repair from those findings.
+It stops after round 5 at the latest. When every eval passes and review is clean it runs `super-agents board set 004 done` and reports the rounds it took.
