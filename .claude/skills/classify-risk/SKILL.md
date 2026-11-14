@@ -4,7 +4,11 @@ description: Rate a feature or change low, medium or high risk by asking what ha
 argument-hint: <feature or change description>
 ---
 
+# Classify risk
+
 Ask one question about "$ARGUMENTS": **what happens to whoever relies on this (a customer, a reader, an operator) if it breaks or is wrong?** Rate the worst realistic failure, not the likely one. The work may be code, a document, research, an analysis, a design, a plan or an operations task.
+
+## Instructions
 
 - **low**: it only looks wrong (layout, copy, colour). Everything still works. For non-code work: it reads or looks wrong and nothing follows from it.
 - **medium**: a feature stops working, but nobody loses anything and it can be fixed later. Data is intact. For non-code work: someone is misled or redoes work, and it can be corrected.
@@ -17,3 +21,13 @@ If the feature's `RD.md` exists, set its `**Risk:**` line to the level (add it u
 Your whole reply is this one line (and that second line, only when it applies): `RISK: <level> - <the worst realistic customer impact>`.
 
 The level sets how hard everything downstream works: write-eval adds more adversarial evals as it rises, and the reviewer reports lower severities as it rises.
+
+## Examples
+
+Request: `/classify-risk add a "delete my account" button to settings`.
+The skill reads `specs/delete-account/RD.md` (status `draft`), sets its `**Risk:**` line to `high`, and replies with one line:
+
+`RISK: high - a customer can permanently lose their data, and an account deleted by mistake cannot be restored`
+
+Request: `/classify-risk change the footer copyright year`.
+No `RD.md` exists, so nothing is edited. Reply: `RISK: low - the footer only looks wrong; nothing stops working`

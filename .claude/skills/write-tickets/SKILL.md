@@ -5,7 +5,11 @@ argument-hint: <request, or path to a PRD>
 allowed-tools: Bash(super-agents *)
 ---
 
+# Write tickets
+
 A ticket is one feature, or one self-contained piece of any other work (a document, an analysis, a plan), written down so completely that an agent can build and check it without asking anyone. Workers never talk to the user, so everything that needs a human decision is settled here, before any work starts. Do not build anything in this skill.
+
+## Instructions
 
 Input: "$ARGUMENTS" (read it if it is a file path).
 
@@ -32,3 +36,9 @@ Input: "$ARGUMENTS" (read it if it is a file path).
    Every ticket starts `draft`. **Mode** is `team` only when the ticket spans several independent areas that different people could own file by file and is big enough that one worker would be the bottleneck; otherwise `solo`. **Runs** is `alongside`, or `waits for NNN[, NNN]: reason` when the ticket needs another's output or a contract it creates, or when both change the same files (name the files). Two tickets that change the same binary file (docx, xlsx, pptx, an image) wait for each other, because git cannot merge it; name the file in Runs. When unsure, make it wait: a needless wait costs minutes, a conflict costs a merge. Done when: every ticket has a row, a mode and a Runs entry.
 7. **Validate.** `super-agents board check` and `super-agents check-evals <ticket dir>` for each ticket; fix until everything prints `OK`. Done when: every command prints `OK`.
 8. **Hand over.** Give the user the ticket folders, the split, the board, and every decision you made yourself. All tickets are `draft`. Tell them to read the tickets (RD.md and evals.md are what they approve), then `/super-agents:mark-ready 001 002 ...` to mark the ones to build, then run `superagent` in a terminal. Build nothing. Done when: you have told the user all of this.
+
+## Examples
+
+Request: `/write-tickets add password reset and an admin dashboard`.
+The skill splits this into `specs/tickets/001-password-reset` and `specs/tickets/002-admin-dashboard`, each with an `RD.md` and `evals.md` the `write-eval` steps accept. It gives each its own port (3100 + NNN) and test account, so they can run at the same time.
+It writes `specs/tickets/BOARD.md` with both rows as `draft` and a `Runs` column saying `alongside`, and validates with `super-agents board check` and `super-agents check-evals` on each ticket. It hands the tickets to the user for review and builds nothing.

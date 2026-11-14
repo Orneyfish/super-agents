@@ -6,6 +6,16 @@ disable-model-invocation: true
 allowed-tools: Bash(super-agents *)
 ---
 
+# Setup project
+
+## Instructions
+
 1. Run `super-agents setup $ARGUMENTS` (no arguments = the current project). It is idempotent, skips anything that is not a git repo, and prints what it wrote. If the current path is not a git repository, say that super-agents needs git for branches, review diffs and rollback, and offer to run `git init` (ask first; no remote is needed), then run setup again.
 2. For the current project only, tailor `review.md` if it still contains `TODO` (a file with none was already tailored; leave it): first decide what the project holds (code, documents, data, a mixture) from what is in it, reading the README, package or build manifest, test config and CLAUDE.md. Fill only the lines that match. Replace the `TODO` lines. Put the real run/test/start-with-temp-data commands under "How to test this project", and add the failures that matter in this domain (money, personal data, migrations, external APIs) under "What counts as a failure". Only write commands you have confirmed exist. Set `Pre-merge checks` to `none` when there is nothing to run. If you cannot tell something, leave a short `TODO` and say so.
 3. Report what changed, in one short list. For several paths, say which still have the generic `review.md`.
+
+## Examples
+
+Request: `/setup-project ~/Projects/shop ~/Projects/blog`.
+The skill runs `super-agents setup ~/Projects/shop ~/Projects/blog`. The command adds `review.md`, the git and branch policy, and the `review.md` import to each `CLAUDE.md`, and ignores the loop's state directory. It skips any path that is not a git repo.
+The report lists what changed in each project and says which still have the generic `review.md`, because only the current project's `review.md` is tailored.

@@ -5,7 +5,11 @@ argument-hint: <feature-name> [low|medium|high]
 allowed-tools: Bash(super-agents *)
 ---
 
+# Write eval
+
 Evals are the fixed tests that decide whether work is done. Write them before building, make them strict enough that lazy work fails, and get the user to approve them. Do not write feature code or the deliverable in this skill.
+
+## Instructions
 
 Feature name = first word of "$ARGUMENTS" in kebab-case. Directory = `specs/<feature>/` (write-tickets passes a ticket directory instead).
 
@@ -30,3 +34,9 @@ Feature name = first word of "$ARGUMENTS" in kebab-case. Directory = `specs/<fea
 7. **Validate, then attack your own work.** Run `super-agents check-evals <dir>` and fix until it prints `OK`: each `FAIL:` line names one problem in `RD.md` or `evals.md`, so fix the file; if the same line survives two fixes, show it to the user. If the command cannot run at all (`super-agents` not found, or exit 3), say in the hand-over that the spec was not validated; never report an `OK` you did not see. Then reread every eval as an adversary and ask whether a stub could pass it; fix and rerun. Done when: `check-evals` prints `OK` and no eval can be passed by a stub.
 8. **Hand over.** Status stays `draft`. Tell the user the file paths (open `mockup.html` with `xdg-open` on Linux or `open` on macOS, if present), the kind and deliverable you chose, the risk level you chose and why, and every decision you made on your own (assumptions, scope cuts, anything ambiguous). Say what to review: `RD.md`, `evals.md` and the mockup. Outcomes of a build go in `results.md`; these two files are not edited while building. Done when: your reply names the files, the kind, the risk and every decision.
 9. **Stop.** Build nothing. If the user asks for changes, edit, rerun the check, stay `draft`. When the user explicitly approves, run `super-agents board set <dir> ready` and tell them to run `/super-agents:review-loop <feature>`. Done when: no deliverable or feature code exists and the status is still `draft`, or the user approved and the board is `ready`.
+
+## Examples
+
+Request: `/write-eval greeting`, then "the home page should greet a visitor by the name they gave".
+The skill sets the kind to `code`, creates `specs/greeting/RD.md` with `FR-1` and `specs/greeting/evals.md` with the strict eval `E1` shown in the Instructions (two different names, and a `fail when` naming the fixed-string stub). It runs `super-agents check-evals specs/greeting` until it prints `OK`.
+The status stays `draft`. The skill gives the user the paths and stops: it builds nothing and never reports an `OK` it did not see. Only after the user approves does it run `super-agents board set specs/greeting ready`.
