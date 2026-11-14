@@ -60,6 +60,8 @@ checkpoint: <git rev-parse HEAD>
 
 Questions you cannot settle (ambiguous or conflicting requirements, the builder's Questions, an eval that contradicts the mockup): set `awaiting_user: true`, give a short progress report (round, evals P/T, open findings), ask, and set it back to `false` once answered. Product decisions are the user's.
 
+A subagent that fails (an error, an empty reply, a tester reply with no PASS/FAIL line for some eval): start it once more with the same input. If it fails again, set `awaiting_user: true`, report which role failed and what it returned, and stop; never write a result or a verdict it did not give.
+
 ## Finish
 1. On Done run `super-agents board set <dir or NNN> done` first: it checks the evals itself and refuses (exit 1, `FAIL` lines) while any is unmet. If it refuses you are not done: go on with the loop or stop unfinished, and never edit `results.md` to get past it. Then set `active: false` and make the final checkpoint commit. If stopping unfinished, set `active: false` and leave the status `building`.
 2. Report plainly: rounds used, evals P/T with where the evidence lives (`<dir>/results.md`, `<dir>/evidence/`), anything still open (do not hide it), branch name.

@@ -705,6 +705,12 @@ gq templates/review.md '## How to test this project' 'Pre-merge checks:' 'unsupp
 gq skills/setup-project/SKILL.md 'git init' 'Pre-merge checks'
 gq scripts/session-start.sh 'any kind of work'
 gq README.md 'mattpocock/skills'
+gq skills/write-eval/SKILL.md 'is not `draft`' 'never report an `OK` you did not see' 'names what the stub shows'
+gq skills/first-time-user/SKILL.md 'a port nothing is listening on' 'as soon as you stop early'
+gq skills/mark-ready/SKILL.md 'by hand' 'nothing to mark'
+gq skills/classify-risk/SKILL.md 'needs your re-approval'
+gq skills/review-loop/SKILL.md 'start it once more'
+gq skills/fix-bug/SKILL.md 'only the files you changed'
 # a prompt may not tell the model to run a skill that is user-invoked only (disable-model-invocation): it tells the user, with the slash form
 bad_inv=$(grep -rnE '(Skill tool|invoke|call|run|use)[^.]*super-agents:(mark-ready|review-loop|setup-project)' "$R/agents" "$R/skills" | grep -vE '/super-agents:' | head -3)
 [ -z "$bad_inv" ] && ok || bad "invocation: a prompt tells the model to run a user-only skill: $bad_inv"
