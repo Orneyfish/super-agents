@@ -50,12 +50,15 @@ There are two flows. Both start from a written spec (`RD.md` plus `evals.md`) th
    `--permission-mode auto` with agent teams enabled for that process and the setting
    `worktree.baseRef: "head"`, so worktrees are cut from the integration branch (`:21-24`).
 4. The router dispatches one `worker` per solo ticket (each in its own git worktree) or a team of
-   `teammate` agents per team ticket, plus one background `watchdog` (`agents/router.md:39-43`).
+   `teammate` agents per team ticket, plus one background `watchdog` (`agents/router.md:39-43`). It
+   passes each solo worker a tier (`model` and `effort` on the Agent call, from the ticket's kind and
+   risk) and keeps to the `## Budget` in `review.md`.
 5. Each worker builds, has its own `tester` and `reviewer` check the work, writes `results.md` and
    `evidence/`, and commits on its branch (`agents/worker.md:15-33`).
 6. The router accepts or sends it back (`agents/router.md:46-47`), then runs `merger`, then
    `checker`, then `reproducer` if the checker found a break (`agents/router.md:48-49`).
-7. When every ticket is done and checked, the merger runs `super-agents drop-specs`, which commits
+7. When every ticket is done and checked, the router gives its final report in chat, then the merger
+   runs `super-agents drop-specs`, which commits
    the removal of `specs/tickets/` (`agents/router.md:51`, `scripts/drop-specs.sh:13-25`).
 
 ## 2. Component map
@@ -141,11 +144,12 @@ flowchart TB
 The versions in `plugin.json`, `marketplace.json` and `core/Cargo.toml` must be equal
 (`tests/run.sh:484-487`).
 
-**Project-local copies.** `.claude/agents/` and `.claude/skills/` hold byte-identical copies of the
-plugin's 11 agents and 8 skills, added in commit `aab1bdc`, plus `.claude/agents/general-purpose.md`,
-which overrides the built-in general-purpose agent with `model: claude-fable-5-2`. They are **not**
-part of the plugin: they only take effect in sessions opened in this repository, where they appear a
-second time without the `super-agents:` prefix. Nothing tests that they stay in sync. See issue N-04.
+**Project-local copies.** `.claude/agents/` and `.claude/skills/` hold copies of the plugin's 11 agents
+and 8 skills, added in commit `aab1bdc`. The agent copies are byte-identical except the `model:` line of
+`watchdog.md` (`haiku` in the copy); `tests/run.sh:609-611` fails any other difference (issue N-04).
+`.claude/agents/general-purpose.md` also overrides the built-in general-purpose agent, with `model: sonnet`.
+They are **not** part of the plugin: they only take effect in sessions opened in this repository, where
+they appear a second time without the `super-agents:` prefix.
 
 ### 2.2 Skills
 
@@ -192,6 +196,12 @@ Facts about the harness that these definitions depend on, as measured in
 - A scoped `Agent(...)` list on an ordinary subagent is **not** enforced.
 - A worktree-isolated agent starts from the remote's default branch when the repository has a remote,
   unless `worktree.baseRef` is `head`, which `superagent.sh` passes with `--settings` (issue C-05).
+- The Agent tool takes a per-call `model` (enum `sonnet`, `opus`, `haiku`) and `effort`. Binary evidence:
+  `grep -a -c -F "Optional model override for this agent" /opt/claude-code/bin/claude` prints `1`.
+  Run-time check (WP0, 2026-11-14, CLI 2.1.322): a probe whose file says haiku, started with
+  `model: "opus"`, ran `claude-opus-5-5` (cost $0.03), so the per-call `model` takes precedence. Not
+  yet observed: `effort`, and the router's real case (a `--agent` main thread starting an
+  `isolation: worktree` worker). See `docs/design/2026-11-14-tiered-routing-guide.md` section 1.3.
 
 ### 2.4 Hooks
 

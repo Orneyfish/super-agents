@@ -33,5 +33,10 @@ Only report what you can show with evidence. Nothing found: write `no findings`.
 - Pre-merge checks: TODO commands run before work is merged (lint and build for code; a link or style check for documents), or none.
 - Ports and accounts (change here if your app needs different ones): main checkout 3000 (account t000); bug reproducer 3090 (t090); ticket NNN on port 3100+NNN (account tNNN), so parallel tickets never share state.
 
+## Budget
+Read by the router (`superagent`) only. It is the router's own count, not a hard stop. Use `none` for no limit.
+- Max workers at once: 4
+- Max agent starts: 40
+
 ## Rules learned over time
 <!-- One line each. Add when a review missed a bug that surfaced later, or flagged the same non-problem more than once. -->

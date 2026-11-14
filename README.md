@@ -53,7 +53,8 @@ super-agents link-skills ~/.hermes/skills     # Hermes Agent
 |---|---|---|---|---|
 | **Claude Code** | yes | yes | yes | End to end in live sessions: router, worker in a worktree, tester, reviewer, merger, checker; skills via the `super-agents` command; every gate and hook. Script assertions in `tests/run.sh`, run in CI on Linux and macOS. Agent **teams** (team-mode tickets) follow the docs but were not exercised live. |
 | **Hermes Agent** | yes | no | no (use its own delegation) | All 8 skills discovered and enabled, and the command resolves from a clean login-shell PATH. A live model run was **not completed**: Hermes's configured Copilot provider failed to connect during testing. |
-| **Codex CLI, Gemini CLI, OpenCode, Copilot, Cursor, and others that read Agent Skills (`.agents/skills`)** | expected | no | no | **Not tested** (not installed where this was built). Skills follow the Agent Skills format (name matches folder, description under 1,024 chars; checked by `tests/run.sh`) and call only the `super-agents` command, never a Claude-only variable. |
+| **Codex CLI** | yes | no | no | One live run on Codex CLI 0.169 (2026-11-14): `write-eval` found through `~/.agents/skills`, wrote `RD.md` and `evals.md` for a `document` job as `draft`, and passed `super-agents check-evals`. Nothing past that was run. |
+| **Gemini CLI, OpenCode, Copilot, Cursor, and others that read Agent Skills (`.agents/skills`)** | expected | no | no | **Not tested** (not installed where this was built). Skills follow the Agent Skills format (name matches folder, description under 1,024 chars; checked by `tests/run.sh`) and call only the `super-agents` command, never a Claude-only variable. |
 
 What degrades outside Claude Code: the hooks that stop an agent from saying "done" with failing evals, and the one that blinds the first-time-user agent, do not run, so the skills tell you to run `super-agents check-evals <dir> --passed` yourself. The router/worker system needs Claude Code's `--agent`, background subagents and worktree isolation; elsewhere use `write-tickets` to plan and the single-feature flow (`write-eval`, then `review-loop` with each role in a fresh session) to build.
 
@@ -77,6 +78,8 @@ Each piece of work has a kind, set in `RD.md` as `**Kind:**` (missing means `cod
 - **plan**: someone could start step 1 without asking anything, and every goal is measurable.
 - **operations**: the procedure ran on a safe target and the end state was read back; the real target is not touched.
 
+In a `superagent` run the kind and the risk also pick the worker's tier: `research`, `analysis`, `design` and `plan`, and anything at risk `high`, are built on opus; the rest on sonnet (see The agents).
+
 A non-code kind also names its `**Deliverable:**` file. `check-evals --passed` fails unless each deliverable is a non-empty regular file in the checkout (not a directory or a symlink); a path under `specs/` or a git-ignored path is refused when the spec is written. The checks each kind uses are in [`templates/kinds.md`](templates/kinds.md).
 
 ## Commands
@@ -97,7 +100,7 @@ A non-code kind also names its `**Deliverable:**` file. `check-evals --passed` f
 
 | Agent | Role |
 |---|---|
-| `router` | The only agent you talk to. High effort, and **no write or shell tools**: it can only read, start agents and message them. Shows you a run plan and asks before it starts any tickets (name tickets to skip the question, or say "keep going" to stop being asked as more unblock), starts the watchdog, dispatches, checks each result against the ticket's evals, queues merges, relays decisions to you. |
+| `router` | The only agent you talk to. High effort, and **no write or shell tools**: it can only read, start agents and message them. Shows you a run plan and asks before it starts any tickets (name tickets to skip the question, or say "keep going" to stop being asked as more unblock), starts the watchdog, dispatches, checks each result against the ticket's evals, queues merges, relays decisions to you, picks each worker's tier, keeps to the budget in `review.md`, gives a final report. |
 | `worker` | One solo ticket in its own git worktree: builds, has the tester and reviewer check it, writes `results.md` + `evidence/`, commits on its branch. Sonnet. |
 | `teammate` | One member of an agent team on a `team` ticket. Works in the main checkout on files it owns, agreed first in `contract.md`; the last-named teammate integrates and tests. |
 | `merger` | Lands a solo branch, a team's work, or a fix branch on the current branch: merges without committing, runs lint + build, then commits or aborts; refuses a branch that changed the approved `evals.md`; marks the ticket done. One at a time. |
@@ -124,7 +127,23 @@ A non-code kind also names its `**Deliverable:**` file. `check-evals --passed` f
 | `watchdog` | sonnet | medium | 400 | Long-lived; forwards and summarises. |
 | `first-time-user` | sonnet | default | none | Pinned so its cost does not depend on the model of the session that starts it. |
 
-The turn limits are ceilings for an agent that loops, set well above anything seen so far (the one measured run, a toy feature, used 2-3 tool calls per agent); they are not tuned on real projects yet. A solo ticket costs at least five agent runs (worker, tester, reviewer, merger, checker) and up to four tester and four reviewer runs with three fix rounds; the router shows that total in its plan. There is no budget ceiling.
+| Ticket | `model` | `effort` |
+|---|---|---|
+| any kind, risk `high` | `opus` | `medium` |
+| `research`, `analysis`, `design` or `plan`, risk `low` or `medium` | `opus` | `low` |
+| `code`, `document` or `operations`, risk `low` or `medium` | leave out (the file says sonnet) | leave out (the file says high) |
+
+The router passes these as `model` and `effort` on the Agent call; the worker's file and its gate are the same on every tier.
+
+The turn limits are ceilings for an agent that loops, set well above anything seen so far (the one measured run, a toy feature, used 2-3 tool calls per agent); they are not tuned on real projects yet. A solo ticket costs at least five agent runs (worker, tester, reviewer, merger, checker) and up to four tester and four reviewer runs with three fix rounds; the router shows that total in its plan.
+
+### Budget
+
+`review.md` may hold a `## Budget` section (`Max workers at once`, `Max agent starts`). The router shows it in its plan, starts at most that many workers at once, counts the agents it starts itself, and stops and asks before passing the limit. It is the router's own count: it does not include the testers and reviewers that workers start, it begins at 0 when the router restarts, and nothing mechanical enforces it. There is no cost limit and no time limit. Projects set up before this version have no section and no limit; add it by hand.
+
+### Final report
+
+The router gives a final report in chat when the board is finished, and whenever it stops early. It is built from files read at report time (`results.md`, the `**Review:**` line and `.super-agents/checks/NNN.txt`), and it is given before `specs/tickets/` is dropped, so afterwards its evidence paths exist only in the branch history. It has no cost figure: its agent-start count is the router's own, for that session.
 
 ## Ticket folder
 
@@ -136,7 +155,7 @@ specs/tickets/001-slug/
   .evals.sha256  # fingerprints of evals.md (line 1) and of RD.md without its Status line (line 2), written when you approve it (mark-ready; CRLF counts as LF, so Git's line-ending conversion on Windows does not matter); the done-gate fails if either file changes afterwards
   mockup.html  # UI tickets only
   contract.md  # team tickets: who owns which files, the names they share
-  results.md   # written by the worker/tester: one row per eval, pass/fail, evidence path
+  results.md   # written by the worker/tester: one row per eval, pass/fail, evidence path; a blocked worker adds a `## Handoff` block
   evidence/    # screenshots and output
 ```
 
@@ -156,7 +175,7 @@ Ticket `NNN` runs on port `3100+NNN` with test account `tNNN`; the main checkout
 - The router restriction is its `tools` list, so it cannot start servers or run `super-agents board`; workers, the merger and the watchdog do that.
 - `agent-browser` is not bundled. Install it for parallel browser checks: `npm install -g agent-browser && agent-browser install`. Without it the tester, checker and reproducer fall back to the Chrome tools, which are one shared browser.
 - The done-gates check that evidence files exist and are non-empty, not what they show. In a worker's worktree the `evals.md` fingerprint is checked against the copy in your main checkout. Nothing technical stops a worker from writing there (workers have Bash), so the router reads `evals.md` from the main checkout and the merger refuses a branch that changed the approved files. In the single-feature review-loop the builder shares your checkout, so there the fingerprint only catches accidental edits. The post-merge checker, which re-walks the merged feature in a browser, is the independent check.
-- **Parallel mode runs unattended** (`--permission-mode auto`) and the worker, merger, reproducer and teammates have Bash. "Never push", "never touch the main checkout" and "never edit `evals.md`" are prompt rules. On a real codebase run it in a container, a VM or a disposable clone.
+- **Parallel mode runs unattended** (`--permission-mode auto`) and the worker, merger, reproducer and teammates have Bash. "Never push", "never touch the main checkout" and "never edit `evals.md`" are prompt rules. On a real codebase run it in a container, a VM or a disposable clone. `superagent --permission-mode default` asks before each tool call that needs permission instead: more prompts, fewer unattended hours. How a background worker behaves at such a prompt has not been run live.
 - The first-time-user Bash block is a regex denylist, not a sandbox: it blocks file-reading commands and shell wrappers where a command starts (words inside arguments are fine; a plain filter such as `head -5` or `grep ok` after a pipe from `curl` or a launcher is fine too, but a filter given a file (`head main.py`, `grep ok app.py`, `grep -f`, `grep -r`, `< file`) is not: any operand beyond the one pattern, script or program of `grep`, `sed` and `jq` counts as a file), and `file:` URLs in browser calls. A determined agent can still bypass it, for example by splitting a word with quotes.
 - Plugin subagents cannot carry their own hooks, so the worker and first-time-user gates are plugin-level hooks keyed on `agent_type`.
 - Parallel agents and router sessions are expensive. Use tickets for work that is worth it, and `classify-risk` to decide how hard to push.
