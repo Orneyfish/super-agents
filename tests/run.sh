@@ -92,6 +92,8 @@ t eval-passed-failing 1 $X/check-evals.sh $D --passed;             has eval-pass
 sedi 's#| E2 | fail | slow |#| E2 | pass | evidence/gone.png: ok |#' $D/results.md
 t eval-passed-missing-file 1 $X/check-evals.sh $D --passed;        has eval-passed-missing-file "does not exist"
 echo ok > $D/evidence/gone.png; t eval-passed 0 $X/check-evals.sh $D --passed
+# #28: a handoff block in results.md is not a result row: a passing file still passes with one
+printf '\n## Handoff\n- branch: b\n- done: d\n' >> $D/results.md; t eval-passed-with-handoff 0 $X/check-evals.sh $D --passed
 # a pass row must point at a real, non-empty evidence/ file: free text, path tricks and empty files are not proof
 printf '| eval | result | evidence |\n|---|---|---|\n| E1 | pass | evidence/a.png: ok |\n| E2 | pass | trust me |\n' > $D/results.md
 t eval-passed-free-text 1 $X/check-evals.sh $D --passed;           has eval-passed-free-text "without an evidence/ file"
@@ -711,6 +713,17 @@ gq skills/mark-ready/SKILL.md 'by hand' 'nothing to mark'
 gq skills/classify-risk/SKILL.md 'needs your re-approval'
 gq skills/review-loop/SKILL.md 'start it once more'
 gq skills/fix-bug/SKILL.md 'only the files you changed'
+# ---- #28 tiered routing, run budget, final report, handoff: prompt guards (the router is a prompt; a live run is the real test)
+gq agents/router.md '## Routing' '| any kind, risk `high` | `opus` | `medium` |' 'Pass `model` and `effort` as parameters' 'Team tickets are not routed'
+gq agents/router.md '## Budget' 'Max workers at once' 'Max agent starts' 'means no limit' 'You cannot see cost or elapsed time'
+gq agents/router.md '## Final report' 'before you start the `drop specs` merger' 'not from memory' 'no cost figure'
+gq agents/router.md 'Replacing a worker' 'resume from branch'; ! grep -q 'continues in the existing worktree' "$R/agents/router.md" && ok || bad "router.md still restarts a worker 'in the existing worktree', which isolation: worktree makes impossible"
+gq agents/worker.md '## Handoff' 'git merge --ff-only' 'ticket NNN: blocked' 'unfinished files'
+gq templates/review.md '## Budget' 'Max workers at once:' 'Max agent starts:'
+gq README.md '### Budget' '### Final report' 'no cost limit' 'Max agent starts'; ! grep -q 'There is no budget ceiling' "$R/README.md" && ok || bad "README still says there is no budget ceiling"
+# #28: the done-gate matches one agent type (worker-gate.sh), so a tier is a parameter of the worker, never a second ticket-building agent type
+for f in "$R"/agents/*.md; do n=$(basename "$f" .md); [ "$(fm "$n" isolation)" != worktree ] || case $n in worker|reproducer) ;; *) bad "agent $n builds in a worktree but scripts/worker-gate.sh gates only super-agents:worker";; esac; done; ok
+grep -qF '[ "$at" = super-agents:worker ]' "$R/scripts/worker-gate.sh" && ok || bad "worker-gate.sh no longer matches super-agents:worker exactly; the routing design (docs/design/2026-11-14-tiered-routing-guide.md) relies on it"
 # a prompt may not tell the model to run a skill that is user-invoked only (disable-model-invocation): it tells the user, with the slash form
 bad_inv=$(grep -rnE '(Skill tool|invoke|call|run|use)[^.]*super-agents:(mark-ready|review-loop|setup-project)' "$R/agents" "$R/skills" | grep -vE '/super-agents:' | head -3)
 [ -z "$bad_inv" ] && ok || bad "invocation: a prompt tells the model to run a user-only skill: $bad_inv"

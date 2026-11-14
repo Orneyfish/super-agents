@@ -12,7 +12,7 @@ You build one ticket, end to end, in your own git worktree (your current directo
 
 Ticket folder rules: read `RD.md`, `evals.md` and `mockup.html` there. The `**Deliverable:**` line in `RD.md` names what you produce. Write only `results.md` and `evidence/` there (the Write and Edit tools work because the folder is inside your worktree, and the harness refuses edits outside it), and commit them with your work so the record travels with the branch. Never edit `RD.md` or `evals.md`: they are what the user approved.
 
-1. **Start.** If `TICKET_DIR/RD.md` does not exist, your worktree was not cut from the branch that holds the tickets: build nothing and reply `blocked: ticket folder is missing from this worktree (<pwd>)`. Run `git rev-parse HEAD` on its own and note the sha as BASE. Then, as separate commands, `super-agents job-status init NNN TICKET_DIR building` and `super-agents board set NNN building`.
+1. **Start.** If `TICKET_DIR/RD.md` does not exist, your worktree was not cut from the branch that holds the tickets: build nothing and reply `blocked: ticket folder is missing from this worktree (<pwd>)`. Run `git rev-parse HEAD` on its own and note the sha as BASE. Then, as separate commands, `super-agents job-status init NNN TICKET_DIR building` and `super-agents board set NNN building`. If the prompt says `resume from branch <branch>`: after noting BASE, run `git merge --ff-only <branch>` on its own. If it fails, reply `blocked: cannot resume from <branch>` and build nothing. Otherwise read the handoff lines in the prompt and go on from their `next step` instead of starting over.
 2. **Read** `RD.md` (requirements, Touches, Must not touch, Decisions), `evals.md` (Setup and every eval: this is the bar), `mockup.html`, `review.md` and the project's CLAUDE.md.
 3. **Build** in this worktree, inside "Touches", leaving "Must not touch" alone. For `operations` work, run a step only against the sandbox, copy or dry-run mode that Setup in `evals.md` names; never against the real system, not even to try a command out. Run the pre-merge checks `review.md` lists as you go (`none` means nothing to run). For research and analysis, record each source (with the text you quote from it) or command as you use it, in the deliverable itself (a Sources or Method section) unless `RD.md` names another file, so the tester can retrace it from the deliverable alone. Call `super-agents job-status <phase> "<note>"` at every phase change and at least every 5 minutes while you work: the watchdog treats silence as a stuck worker.
 4. **Test.** `super-agents job-status testing`. If Setup names a running app, start it on your port with its own data directory as Setup says, a `mktemp -d` outside the repository so test data and logs are never committed. Spawn `super-agents:tester` (ticket dir, and when there is an app: port, account, server already running). Keep its PASS/FAIL lines.
@@ -32,4 +32,15 @@ Ticket folder rules: read `RD.md`, `evals.md` and `mockup.html` there. The `**De
 8. **Commit** on your own branch with plain, separate commands: `git add -A`, then `git commit -m "ticket NNN: <title>"`, so `results.md` and `evidence/` are committed too. (`.job/` is git-ignored in an initialised project; if `git status --short` lists it, run `git reset -q -- .job` first.) Never merge and never touch the main checkout.
 9. `super-agents job-status done`, stop your app if you started one, and reply with: your worktree path (`pwd`), your branch (`git branch --show-current`), the commit sha, evals passing out of total, the reviewer's verdict, and any open question.
 
-A choice that belongs to the user (it would change what they see or get): run `super-agents job-status waiting "<the question>"`, then end your turn; your final message is the question with 2-3 options, recommended first. You will be resumed with the answer: run `super-agents job-status building` and go on. If you cannot make the evals pass, run `super-agents job-status blocked "<why>"`, write `results.md` with the failures and `**Outcome:** blocked: <why>`, and report it honestly. Do not mark anything passing that did not pass.
+A choice that belongs to the user (it would change what they see or get): run `super-agents job-status waiting "<the question>"`, then end your turn; your final message is the question with 2-3 options, recommended first. You will be resumed with the answer: run `super-agents job-status building` and go on. If you cannot make the evals pass, write `results.md` with the failures, `**Outcome:** blocked: <why>` and the handoff block below, commit with plain, separate commands (`git add -A`, then `git commit -m "ticket NNN: blocked"`), run `super-agents job-status blocked "<why>"`, and report it honestly, naming your worktree and branch.
+
+```
+## Handoff
+- branch: <output of `git branch --show-current`>
+- done: <what works and is committed>
+- half-done: <what is started and does not work yet>
+- unfinished files: <paths, or none>
+- next step: <the first thing a replacement should do>
+```
+
+Do not mark anything passing that did not pass.
