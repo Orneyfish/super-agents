@@ -1,0 +1,5 @@
+06d256c68201b6c02ccf448657ad6c8ed514e10acfd344084ebda1f46a2c57bd  sa-core-aarch64-apple-darwin
+020d3e6b37bd4cfb2bd4cd8642c368b3b942f85ed151a35bbe6ed56a6c9b6b7e  sa-core-aarch64-unknown-linux-musl
+e6b700eeac51fc772c02557fbaad4ff247da6932caba06f003c172fe87f219b6  sa-core-x86_64-apple-darwin
+536e042c136e30ca93d3af6a81c49aa2462ac7f3a4a59d77aa481e93c880814b  sa-core-x86_64-pc-windows-msvc.exe
+7d56561b709c395abb94de65654826621fba7ac3354f127e57b62857c41c2b1f  sa-core-x86_64-unknown-linux-musl
