@@ -620,7 +620,7 @@ done
 # #7: prompt changes with no behaviour to run: guard them against being undone (the router cannot commit tickets; the merger blocks only on a running team; the reviewer is given its base)
 grep -q 'super-agents commit-tickets' "$R/agents/router.md" && ok || bad "router.md no longer asks the user to run 'super-agents commit-tickets' for tickets approved late"
 grep -q "building.*team" "$R/agents/merger.md" && grep -q 'stray files' "$R/agents/merger.md" && ok || bad "merger.md no longer tells a running team's files from stray files"
-grep -q '^base: ' "$R/skills/review-loop/SKILL.md" && grep -q '`base` and `checkpoint`' "$R/skills/review-loop/SKILL.md" && grep -q '`base` in round 1' "$R/agents/reviewer.md" && ok || bad "the review-loop no longer records base or passes base and checkpoint to the reviewer"
+grep -q 'base: %s' "$R/scripts/loop-state.sh" && grep -q 'super-agents loop start' "$R/skills/review-loop/SKILL.md" && grep -q '`base` and `checkpoint`' "$R/skills/review-loop/SKILL.md" && grep -q '`base` in round 1' "$R/agents/reviewer.md" && ok || bad "the review-loop no longer records base or passes base and checkpoint to the reviewer"
 grep -q 'watchdog keeps running' "$R/agents/router.md" && grep -q 'NOT REPRODUCED' "$R/agents/router.md" && ok || bad "the router's Finish step no longer excludes the watchdog and unresolved checks"
 # N-06: a check's verdict is a file the checker writes, so a restarted router does not treat a merged, never-checked ticket as finished
 grep -q '\.super-agents/checks/NNN\.txt' "$R/agents/checker.md" && [ "$(grep -c '\.super-agents/checks/NNN\.txt' "$R/agents/router.md")" -ge 2 ] && sed -n '/\*\*Finish\.\*\*/p' "$R/agents/router.md" | grep -q 'checks/NNN\.txt' && ok || bad "the checker no longer records its verdict in .super-agents/checks/NNN.txt, or the router's On start / Finish no longer read it (N-06)"
@@ -786,5 +786,31 @@ grep -q 'cargo test --locked' "$rl" && ok || bad "release.yml: the test job must
 for c in "$R"/evals/*/; do n=$(basename "$c"); [ "$n" = results ] && continue   # a case without a grader fails to load in 'claude plugin eval'
   [ -f "$c/prompt.md" ] && [ -n "$(ls "$c"/graders/*.md 2>/dev/null)" ] && ok || bad "eval case $n needs prompt.md and at least one graders/*.md"
 done
+
+# ---- loop-state.sh: the one writer of state.md, and the run log (issue: long-term review)
+L="$T/lp"; mkdir -p "$L/specs/f"; git -C "$L" init -q -b feat; git -C "$L" -c user.email=t@t -c user.name=t commit -qm base --allow-empty
+lp() { (cd "$L" && "$R/bin/super-agents" loop "$@"); }
+t loop-bad-risk 2 lp start specs/f urgent
+t loop-bad-dir 2 lp start '../x' low
+t loop-bad-sid 2 lp start specs/f low 'a;b'
+t loop-start 0 lp start specs/f medium sess-1
+ls=$(cat "$L/.super-agents/state.md"); h=$(git -C "$L" rev-parse HEAD)
+for k in 'dir: specs/f' 'session: sess-1' 'active: true' 'awaiting_user: false' 'risk: medium' 'round: 0' 'max_rounds: 5' 'gate_blocks: 0' "base: $h" "checkpoint: $h" '| id | class |'; do grep -qF -- "$k" <<<"$ls" && ok || bad "loop start: state.md lacks '$k'"; done
+mkdir -p "$L/specs/g"; t loop-start-other-active 1 lp start specs/g low
+printf '| E1 | pass | x |\n| E2 | fail | y |\n' > "$L/specs/f/results.md"; sedi 's/^round:.*/round: 3/' "$L/.super-agents/state.md"
+t loop-end-bad 2 lp end maybe
+t loop-end 0 lp end cap
+grep -q '^active: false' "$L/.super-agents/state.md" && ok || bad "loop end: state.md still active"
+[ "$(tail -1 "$L/.super-agents/history.tsv" | cut -f2-)" = "$(printf 'specs/f\tmedium\t3\t1/2\t0\tcap')" ] && ok || bad "loop end: history line wrong: $(tail -1 "$L/.super-agents/history.tsv")"
+t loop-end-twice 1 lp end 'done'
+echo "{\"cwd\":\"$L\"}" | "$X/eval-gate.sh" | grep -q . && bad "eval-gate acts on a loop that 'loop end' closed" || ok
+
+# ---- always-on budget: text that enters every session (model-invocable skill and agent descriptions, plus SessionStart in a git repo)
+# shortcut: characters, not tokens (about 4 per token); raise the number only on purpose, since every user pays it in every session.
+ao=0; for f in "$R"/skills/*/SKILL.md; do grep -q '^disable-model-invocation: true' "$f" || ao=$((ao+$(grep -m1 '^description:' "$f" | wc -c))); done
+for f in "$R"/agents/*.md; do ao=$((ao+$(grep -m1 '^description:' "$f" | wc -c))); done
+ao=$((ao+$(echo "{\"cwd\":\"$L\",\"session_id\":\"s\"}" | "$X/session-start.sh" | wc -c)))
+[ "$ao" -le 3800 ] && ok || bad "always-on text is $ao characters, over the 3800 budget: shorten a description or the SessionStart text"
+nogit=$(echo '{"cwd":"/"}' | "$X/session-start.sh"); grep -q 'write-eval' <<<"$nogit" && bad "SessionStart outside a git repo should not carry the skill flow" || ok
 
 echo "$pass passed, $fail failed$([ "$skipped" -gt 0 ] && echo ", $skipped skipped ($skipwhy)")"; [ "$fail" = 0 ]

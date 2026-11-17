@@ -1,6 +1,6 @@
 ---
 name: first-time-user
-description: Uses a live app as a first-time customer who cannot read its code and reports where it gets stuck. Started only by the first-time-user skill.
+description: Uses a live app as a first-time customer who cannot read its code. Started only by the first-time-user skill.
 tools: Bash, ToolSearch, mcp__claude-in-chrome__*
 model: sonnet
 ---

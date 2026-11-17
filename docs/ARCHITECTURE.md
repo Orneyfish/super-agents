@@ -160,7 +160,7 @@ they appear a second time without the `super-agents:` prefix.
 | `write-eval` | yes | `Bash(super-agents *)` | `RD.md`, `evals.md`, `mockup.html`; validates; stops at `draft`; on explicit approval runs `board set <dir> ready` (`:22`). |
 | `write-tickets` | yes | `Bash(super-agents *)` | One ticket folder per feature via write-eval steps 1-5; `BOARD.md`; `board check`. |
 | `mark-ready` | no (`:5`) | `Bash(super-agents *)` | `check-evals`, then `board set <NNN or dir> ready`, then `board check`. |
-| `review-loop` | no (`:5`) | `Bash(super-agents *)` | Orchestrates builder, tester, reviewer; writes `.super-agents/state.md` and `<dir>/results.md`; checkpoint commits. |
+| `review-loop` | no (`:5`) | `Bash(super-agents *)` | Orchestrates builder, tester, reviewer; creates and closes `.super-agents/state.md` through `super-agents loop start|end` (`scripts/loop-state.sh`), updates its round fields, writes `<dir>/results.md`; checkpoint commits. |
 | `first-time-user` | no (`:5`) | none | Starts the app on a throwaway sandbox and briefs the blind `first-time-user` agent. |
 | `fix-bug` | yes | none | Reproduce, confirm cause, fix at the root, regression test; commit on `fix/<slug>`. |
 
@@ -209,7 +209,7 @@ Registered in `hooks/hooks.json`; active in every session while the plugin is en
 
 | Event | Script | Fires for | What it gates | Releases without checking when |
 |---|---|---|---|---|
-| SessionStart | `session-start.sh` | every session | Nothing. Adds the "done means proven" agreement, the session id, a setup nudge, and a note about an active loop or a board; `dir` and `round` from `state.md` are included only when they match their grammar. Without sa-core it says so and passes on the launcher's reason, which names the platform. | n/a |
+| SessionStart | `session-start.sh` | every session | Nothing. Adds the "done means proven" agreement; in a git repo also the skill flow and the session id, a setup nudge, and a note about an active loop or a board; `dir` and `round` from `state.md` are included only when they match their grammar. Without sa-core it says so and passes on the launcher's reason, which names the platform. | n/a |
 | Stop | `eval-gate.sh` | every turn end of a main session | While `.super-agents/state.md` has `active: true`: blocks unless `check-evals.sh <dir> --passed` exits 0 (`:21`, `:30`). | no state file; file older than 12 h; `active` not `true`; `awaiting_user: true`; `state.md` tracked by git or a symlink (says so); invalid `dir`; another session owns the loop; a task in the payload's `background_tasks` is still running (a wait, not counted as a block); 3 blocks already (`gate_blocks` is read as 1-3 digits, anything else as 0); hook JSON unreadable (says so); sa-core missing (says so in a `systemMessage`). |
 | SubagentStop | `worker-gate.sh` | every subagent end | Only `agent_type` exactly `super-agents:worker` (`:8`): blocks unless `check-evals.sh <dir> --passed` exits 0, where `<dir>` is the single `specs/tickets/NNN-*` folder in the worker's own worktree, found from the ticket number in `.job/status.json` (its `dir` field is not read). | no status file; status file tracked or a symlink; no single ticket folder; phase `blocked` or `waiting` (the worker stopped to ask the user); 3 blocks; hook JSON unreadable; sa-core missing. Each of these except the two phases says so. |
 | PreToolUse | `block-code-reads.sh` | Read, Grep, Glob, Edit, Write, NotebookEdit, Bash, chrome tools (`hooks.json:14`) | Only an agent whose type ends in `first-time-user` (`:7`): denies every file tool, `file:` URLs in browser calls, and Bash commands matched by a regex denylist (`:27-30`, `:137-139`). | any other agent; sa-core missing (`:6`). Hook JSON that does not parse is denied for the first-time-user and reported for anyone else. |
@@ -283,7 +283,7 @@ Everything is a file in the project. There is no daemon and no database.
 | `<dir>/results.md` | tickets: yes, on the worker's branch | review-loop orchestrator (`SKILL.md:42-51`); worker (`worker.md:21-31`); team integrator (`teammate.md:15`) | `check-evals.sh:59-66`, router, watchdog |
 | `<dir>/evidence/` | as above | tester (`tester.md:14`); checker screenshots | `check-evals.sh:65` (exists and is non-empty), router (Glob) |
 | `<dir>/contract.md` | team tickets | first-sorted teammate (`teammate.md:11`) | teammates, merger (`merger.md:18`) |
-| `.super-agents/state.md` | no | review-loop orchestrator, by hand; `eval-gate.sh:18` (session claim) and `:28` (`gate_blocks`) | `eval-gate.sh`, `session-start.sh:14-15` |
+| `.super-agents/state.md` | no | `scripts/loop-state.sh` (start, end), the review-loop orchestrator for round fields; `eval-gate.sh:18` (session claim) and `:28` (`gate_blocks`) | `eval-gate.sh`, `session-start.sh:14-15` |
 | `.super-agents/checks/NNN.txt` | no | checker (verdict line, checked commit) | router, on start and before `drop specs` |
 | `.super-agents/watchdog.conf` | no | watchdog, with Edit | `scan.rs:152-165`, `watchdog-loop.sh:10` |
 | `.job/status.json` in a worktree | no | `job-status.sh` (worker) | `worker-gate.sh:10-13`, `scan.rs:177-187`, router (`router.md:27`), watchdog |

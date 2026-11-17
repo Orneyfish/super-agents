@@ -2,7 +2,7 @@
 
 Every piece of work has a kind, set in `RD.md` as `**Kind:**`. A missing line means `code`. The kind changes what "done" is checked with, never whether it is checked: every eval still needs a `check` an agent that did not do the work can run, a `pass when` that can be observed, and a `fail when` that names what lazy work looks like.
 
-Read the section for this work's kind. Whoever relies on the work is its reader, user or operator.
+Read the section for this work's kind and the Risk section. Whoever relies on the work is its reader, user or operator.
 
 ## code
 - done when: it behaves as the requirements say in the running thing (tests, requests, a browser walk), at the sizes and states the spec names.
@@ -48,10 +48,10 @@ Read the section for this work's kind. Whoever relies on the work is its reader,
 
 ## Risk, for any kind
 
-Ask: what happens to whoever relies on this if it is wrong?
-- low: it reads or looks wrong, nothing follows from it. One check per requirement.
-- medium: someone is misled or redoes work, and it can be corrected. Add an error or edge case per requirement.
-- high: a decision about money, law, safety or people's data, or anything published or executed that cannot be taken back. Check every claim, not a sample, and add a rollback or correction path.
+Ask: what happens to whoever relies on this if it is wrong? Strictness for the evals follows the answer.
+- low: it reads or looks wrong, nothing follows from it. Code: a happy-path eval per requirement, plus one failure-mode eval for the riskiest one. Other kinds: one check per requirement.
+- medium: someone is misled or redoes work, and it can be corrected. Per requirement a happy path and at least one error or edge case (empty, invalid, duplicate, retry, state after reload).
+- high: a decision about money, law, safety or people's data, or anything published or executed that cannot be taken back. All of medium, plus abuse and safety evals: for code, another user cannot read or change this data, no double-charge or lost write on retry, a failure midway leaves consistent state, hostile input; for other kinds, check every claim, not a sample. Always a rollback or correction path.
 
 ## Evidence formats
 
