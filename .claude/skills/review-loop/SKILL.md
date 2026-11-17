@@ -20,28 +20,12 @@ You are the orchestrator for "$ARGUMENTS". You never write the work, test, or re
 1. `super-agents check-evals <dir> --ready` prints `OK`. If not, the evals are not approved: point to `/super-agents:write-eval` (or `/super-agents:mark-ready`).
 2. `review.md` exists in the project. If not, stop and tell the user to run `/super-agents:setup-project`.
 3. In a git repo, not on main/master. Switch to `feat/<name>` (`git switch feat/<name>` or `git switch -c feat/<name>`). If the tree has unrelated uncommitted changes, ask what to do with them first.
-4. Read `**Risk:**` from `<dir>/RD.md`. Run `super-agents board set <dir or NNN> building`.
+4. Read `**Risk:**` from `<dir>/RD.md`. Start the loop (State, below) and only then run `super-agents board set <dir or NNN> building`, so a loop that cannot start leaves the board as it was.
 
 ## State
-Create `.super-agents/state.md` (a Stop hook reads it and refuses "done" while evals are not passing in `results.md`):
-```
----
-dir: <dir>
-session: <this session's id, from "This session's id is ..." in your session context; leave the line out if you were not given one>
-active: true
-awaiting_user: false
-risk: <risk>
-round: 0
-max_rounds: 5
-gate_blocks: 0
-base: <git rev-parse HEAD>
-checkpoint: <git rev-parse HEAD>
----
-| id | class | severity | location | first | last | status |
-|----|-------|----------|----------|-------|------|--------|
-```
+Run `super-agents loop start <dir> <risk> <session id>` (the id from "This session's id is ..." in your session context; leave it out if you were not given one). It writes `.super-agents/state.md`, which a Stop hook reads to refuse "done" while evals are not passing in `results.md`. The file holds `dir`, `session`, `active`, `awaiting_user`, `risk`, `round`, `max_rounds`, `gate_blocks`, `base` and `checkpoint` (both the current HEAD), then the findings table (`| id | class | severity | location | first | last | status |`). You update `round`, `gate_blocks`, `checkpoint`, `awaiting_user` and the table; never write the file from scratch. If `loop start` refuses because a loop is still active, continue that loop or ask the user; do not end it on your own.
 
-## Each round N (1 to 5)
+## Each round N (1 to `max_rounds`)
 1. Set `round: N` and `gate_blocks: 0`.
 2. **Build.** Spawn `super-agents:builder` with `<dir>`, N, every open finding (id, class, location, text) and every failing eval. Regressions (evals that passed before and fail now) come first. From round 3 on, if anything still fails, start the prompt with `RETHINK:` plus the reviewer's rethink text so the builder changes approach instead of patching.
 3. **Test.** Spawn `super-agents:tester` with `<dir>` and, when the work has a running app, the port and a test account (per `review.md`). Write `<dir>/results.md` from its PASS/FAIL lines, copied verbatim (never change a result), in this format:
@@ -59,7 +43,7 @@ checkpoint: <git rev-parse HEAD>
 7. **Decide, in this order:**
    - **Done**: every eval passes and the reviewer's verdict is `clean` (nothing at or above the risk threshold).
    - **Stuck**: a finding of the same class and location is still open after two rounds of fixes. Stop and show the user the finding; the builder is not converging.
-   - **Cap**: N = 5. Stop and report what remains. (5, because each round builds, runs every eval, and then reviews.)
+   - **Cap**: N = `max_rounds` from the state file. Stop and report what remains.
    - Otherwise start round N+1.
 
 Questions you cannot settle (ambiguous or conflicting requirements, the builder's Questions, an eval that contradicts the mockup): set `awaiting_user: true`, give a short progress report (round, evals P/T, open findings), ask, and set it back to `false` once answered. Product decisions are the user's.
@@ -67,7 +51,7 @@ Questions you cannot settle (ambiguous or conflicting requirements, the builder'
 A subagent that fails (an error, an empty reply, a tester reply with no PASS/FAIL line for some eval): start it once more with the same input. If it fails again, set `awaiting_user: true`, report which role failed and what it returned, and stop; never write a result or a verdict it did not give.
 
 ## Finish
-1. On Done run `super-agents board set <dir or NNN> done` first: it checks the evals itself and refuses (exit 1, `FAIL` lines) while any is unmet. If it refuses you are not done: go on with the loop or stop unfinished, and never edit `results.md` to get past it. Then set `active: false` and make the final checkpoint commit. If stopping unfinished, set `active: false` and leave the status `building`.
+1. On Done run `super-agents board set <dir or NNN> done` first: it checks the evals itself and refuses (exit 1, `FAIL` lines) while any is unmet. If it refuses you are not done: go on with the loop or stop unfinished, and never edit `results.md` to get past it. Then run `super-agents loop end done` (it runs the same eval check and refuses while any is unmet) and make the final checkpoint commit. If stopping unfinished, run `super-agents loop end stuck`, `cap` or `stopped` (whichever applies) and leave the status `building`. `loop end` sets `active: false` and logs the run to `.super-agents/history.tsv`, the record of how real runs go.
 2. Report plainly: rounds used, evals P/T with where the evidence lives (`<dir>/results.md`, `<dir>/evidence/`), anything still open (do not hide it), branch name.
 3. **Learned rules.** For each finding class that came back in two or more rounds, or any finding the user calls a non-problem, propose a rule for the "Rules learned over time" section of `review.md`. When the class is mechanical, propose a deterministic check (a command to add to the checks in `review.md`) instead of a prose rule. Append only the ones the user approves.
 4. When the work has a live app that users will see, suggest `/super-agents:first-time-user <name>` next.
@@ -76,4 +60,4 @@ A subagent that fails (an error, an empty reply, a tester reply with no PASS/FAI
 
 Request: `/review-loop 004`.
 The skill sets `<dir>` to `specs/tickets/004-*`, checks the preconditions (`super-agents check-evals <dir> --ready` prints `OK`, `review.md` present, not on main), and starts a `super-agents:builder` subagent. Then `super-agents:tester` runs every eval in `evals.md` and `super-agents:reviewer` reviews the result. If an eval fails or the reviewer finds something new, round 2 builds a repair from those findings.
-It stops after round 5 at the latest. When every eval passes and review is clean it runs `super-agents board set 004 done` and reports the rounds it took.
+It stops after `max_rounds` (5) at the latest. When every eval passes and review is clean it runs `super-agents board set 004 done` and reports the rounds it took.

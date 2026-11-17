@@ -15,6 +15,7 @@ case "$cmd" in
   fingerprint)   exec "$root/scripts/sa-native.sh" fingerprint "$@";;
   install-core)  SA_NATIVE_FORCE=1 "$root/scripts/sa-native.sh" --version || exit 3; echo "sa-core is installed for this machine";;
   job-status)    exec "$root/scripts/job-status.sh" "$@";;
+  loop)          exec "$root/scripts/loop-state.sh" "$@";;
   setup)         exec "$root/scripts/init-project.sh" "$@";;
   commit-tickets) exec "$root/scripts/commit-tickets.sh" "$@";;
   drop-specs)    exec "$root/scripts/drop-specs.sh" "$@";;
@@ -27,5 +28,5 @@ case "$cmd" in
                    ln -sfn "${s%/}" "$t" && echo "linked $t"; done; done;;
   template)      [[ ${1:-} =~ ^[A-Za-z0-9._-]+$ && $1 != *..* ]] || { echo "usage: super-agents template <RD.md|evals.md|review.md|kinds.md>" >&2; exit 2; }
                  cat "$root/templates/$1";;
-  *) echo "usage: super-agents {check-evals|board|fingerprint|install-core|job-status|setup|commit-tickets|drop-specs|watchdog-loop|launch|link-skills|template} ..." >&2; exit 2;;
+  *) echo "usage: super-agents {check-evals|board|fingerprint|install-core|job-status|loop|setup|commit-tickets|drop-specs|watchdog-loop|launch|link-skills|template} ..." >&2; exit 2;;
 esac

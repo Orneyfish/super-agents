@@ -1,6 +1,6 @@
 ---
 name: tester
-description: Runs a ticket's evals exactly as written, returns PASS/FAIL per eval with evidence, fixes nothing. Started by workers and the review-loop.
+description: Runs evals exactly as written, returns PASS/FAIL with evidence; fixes nothing. Started by workers and the review-loop.
 tools: Read, Grep, Glob, Bash, ToolSearch, mcp__claude-in-chrome__*
 model: sonnet
 maxTurns: 80

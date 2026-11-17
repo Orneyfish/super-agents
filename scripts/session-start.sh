@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# SessionStart: put the working agreement in every session; nudge un-set-up git projects; resume an active loop.
+# SessionStart: put the working agreement in every session; the flow and session id only in git projects; nudge un-set-up git projects; resume an active loop.
 here="$(cd "$(dirname "$0")" && pwd)"
 why=$("$here/sa-native.sh" --version 2>&1 >/dev/null) || { echo "super-agents: its native helper sa-core is not available here, so its hooks (the done-gates) are switched off. Run 'super-agents install-core' to see why.${why:+ The launcher said: $why}"; exit 0; }
 in=$(cat); cwd=$("$here/sa-native.sh" hookio get cwd <<<"$in"); sid=$("$here/sa-native.sh" hookio get session_id <<<"$in"); cd "${cwd:-.}" 2>/dev/null || exit 0
 
-ctx="The super-agents plugin is active for this user. Working agreement: a task counts as done only when proven with output run in this session (test results, screenshot, eval pass), not on the agent's own say-so. For non-trivial user-visible features or any kind of work (code, documents, research, analysis, design, plans, operations) in git projects the flow is /super-agents:write-eval, then /super-agents:review-loop; for several features at once, /super-agents:write-tickets, /super-agents:mark-ready, then the user runs the 'superagent' command in a terminal. Also available: :classify-risk, :first-time-user, :fix-bug, :setup-project."
-[ -n "$sid" ] && ctx+=" This session's id is $sid; a review-loop started here records it as 'session:' in .super-agents/state.md, so only this session is gated by it."
+ctx="The super-agents plugin is active. Working agreement: a task counts as done only when proven with output run in this session (test results, screenshot, eval pass), not on the agent's own say-so."
 
 if top=$(git rev-parse --show-toplevel 2>/dev/null); then
+  # the flow only matters where specs and branches exist; its skill names are already in the skill list
+  ctx+=" For non-trivial work here, any kind of work (code, documents, research, plans, operations): /super-agents:write-eval, then /super-agents:review-loop; for several features, /super-agents:write-tickets."
+  [ -n "$sid" ] && ctx+=" This session's id is $sid; a review-loop started here records it as 'session:' in .super-agents/state.md, so only this session is gated by it."
   st="$top/.super-agents/state.md"
   if [ ! -f "$top/review.md" ]; then
     ctx+=" This git project has no review.md, so it is not set up for super-agents; /super-agents:setup-project sets it up in one step (worth one mention if the user starts feature work)."

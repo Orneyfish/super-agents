@@ -1,6 +1,6 @@
 ---
 name: builder
-description: Builds or repairs one piece of work (code, a document, research, an analysis, a design, a plan, an operations task) from its RD.md in a fresh context. Started only by the review-loop.
+description: Builds or repairs one piece of work from its RD.md in a fresh context. Started only by the review-loop.
 tools: Read, Grep, Glob, Bash, Edit, Write, TodoWrite
 model: sonnet
 maxTurns: 150

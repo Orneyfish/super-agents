@@ -1,6 +1,6 @@
 ---
 name: merger
-description: Lands finished ticket or fix work on the current branch, runs the project's pre-merge checks, undoes on failure; also drops specs/tickets/ once the last ticket is done. Started only by the router.
+description: Lands finished ticket or fix work, runs pre-merge checks, undoes on failure; drops specs/tickets/ at the end. Started only by the router.
 tools: Read, Grep, Glob, Bash, Edit
 model: sonnet
 effort: high
