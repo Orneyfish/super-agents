@@ -797,13 +797,17 @@ t loop-start 0 lp start specs/f medium sess-1
 ls=$(cat "$L/.super-agents/state.md"); h=$(git -C "$L" rev-parse HEAD)
 for k in 'dir: specs/f' 'session: sess-1' 'active: true' 'awaiting_user: false' 'risk: medium' 'round: 0' 'max_rounds: 5' 'gate_blocks: 0' "base: $h" "checkpoint: $h" '| id | class |'; do grep -qF -- "$k" <<<"$ls" && ok || bad "loop start: state.md lacks '$k'"; done
 mkdir -p "$L/specs/g"; t loop-start-other-active 1 lp start specs/g low
-printf '| E1 | pass | x |\n| E2 | fail | y |\n' > "$L/specs/f/results.md"; sedi 's/^round:.*/round: 3/' "$L/.super-agents/state.md"
+t loop-start-same-active 1 lp start specs/f medium; grep -q 'session: sess-1' "$L/.super-agents/state.md" && ok || bad "loop start replaced an active loop's state"
+printf '## E1: a\n## E2: b\n' > "$L/specs/f/evals.md"; printf '| E1 | PASS | x |\n| E1 | pass | x |\n' > "$L/specs/f/results.md"; sedi 's/^round:.*/round: 3/' "$L/.super-agents/state.md"
 t loop-end-bad 2 lp end maybe
+t loop-end-done-unmet 1 lp end 'done'; grep -q '^active: true' "$L/.super-agents/state.md" && [ ! -f "$L/.super-agents/history.tsv" ] && ok || bad "loop end done closed a loop whose evals do not pass"
 t loop-end 0 lp end cap
 grep -q '^active: false' "$L/.super-agents/state.md" && ok || bad "loop end: state.md still active"
 [ "$(tail -1 "$L/.super-agents/history.tsv" | cut -f2-)" = "$(printf 'specs/f\tmedium\t3\t1/2\t0\tcap')" ] && ok || bad "loop end: history line wrong: $(tail -1 "$L/.super-agents/history.tsv")"
 t loop-end-twice 1 lp end 'done'
 echo "{\"cwd\":\"$L\"}" | "$X/eval-gate.sh" | grep -q . && bad "eval-gate acts on a loop that 'loop end' closed" || ok
+lp start specs/g low >/dev/null; age "$L/.super-agents/state.md" 13; t loop-start-over-stale 0 lp start specs/f low
+mv "$L/.super-agents" "$L/sa-real"; ln -s "$L/sa-real" "$L/.super-agents"; t loop-symlink 1 lp start specs/f low; rm "$L/.super-agents"; mv "$L/sa-real" "$L/.super-agents"
 
 # ---- always-on budget: text that enters every session (model-invocable skill and agent descriptions, plus SessionStart in a git repo)
 # shortcut: characters, not tokens (about 4 per token); raise the number only on purpose, since every user pays it in every session.
