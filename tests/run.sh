@@ -787,6 +787,10 @@ for c in "$R"/evals/*/; do n=$(basename "$c"); [ "$n" = results ] && continue   
   [ -f "$c/prompt.md" ] && [ -n "$(ls "$c"/graders/*.md 2>/dev/null)" ] && ok || bad "eval case $n needs prompt.md and at least one graders/*.md"
 done
 
+# Google "Agent Distraction" (2026-11-06): agents act on stale TODO/bug references; building agents must treat them as notes, not tasks
+for f in agents/builder.md agents/worker.md agents/teammate.md; do gq $f 'is not part of this work unless `RD.md` names it'; done
+gq agents/reproducer.md 'clue at most'; gq skills/fix-bug/SKILL.md 'clue at most'
+
 # ---- loop-state.sh: the one writer of state.md, and the run log (issue: long-term review)
 L="$T/lp"; mkdir -p "$L/specs/f"; git -C "$L" init -q -b feat; git -C "$L" -c user.email=t@t -c user.name=t commit -qm base --allow-empty
 lp() { (cd "$L" && "$R/bin/super-agents" loop "$@"); }
